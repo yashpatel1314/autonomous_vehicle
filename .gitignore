@@ -1,0 +1,18 @@
+# ROS2 / colcon build artifacts
+build/
+install/
+log/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Generated world file
+/tmp/av_sim_world.sdf
