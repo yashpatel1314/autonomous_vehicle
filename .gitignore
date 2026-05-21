@@ -9,10 +9,11 @@ __pycache__/
 *.pyo
 *.egg-info/
 
-# Editor
+# Editor / tooling
 .vscode/
 .idea/
 *.swp
+.claude/
 
 # Generated world file
 /tmp/av_sim_world.sdf
