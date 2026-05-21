@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p /root/.claude/projects/-mnt-c-Users-yashp-autonomous-vehicle/memory)"
+    ],
+    "additionalDirectories": [
+      "/root/.claude/projects/-mnt-c-Users-yashp-autonomous-vehicle/memory"
+    ]
+  }
+}
