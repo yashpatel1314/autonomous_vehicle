@@ -174,14 +174,7 @@ def _build_world_sdf(obstacles, checkpoints) -> str:
           <property key="showTitleBar" type="bool">false</property>
         </ignition-gui>
       </plugin>
-      <!-- 20x20 grid aligned to our world (0,0)-(20,20), centred at (10,10) -->
-      <plugin filename="Grid3D" name="Grid">
-        <cell_count>20</cell_count>
-        <vertical_cell_count>0</vertical_cell_count>
-        <cell_size>1.0</cell_size>
-        <pose>10 10 0.001 0 0 0</pose>
-        <color>0.5 0.5 0.5 1</color>
-      </plugin>
+
     </gui>
 
     <light type="directional" name="sun">
