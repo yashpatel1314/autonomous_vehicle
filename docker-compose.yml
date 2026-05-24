@@ -45,19 +45,19 @@ services:
     environment:
       <<: *common-env
       DISPLAY: ${DISPLAY:-:0}
-      WAYLAND_DISPLAY: ${WAYLAND_DISPLAY:-wayland-0}
-      XDG_RUNTIME_DIR: /mnt/wslg/runtime-dir
+      # Root-owned runtime dir so Ignition GUI IPC socket can be created
+      XDG_RUNTIME_DIR: /tmp/runtime
       LIBGL_ALWAYS_SOFTWARE: ${LIBGL_ALWAYS_SOFTWARE:-1}
     volumes:
-      # WSLg socket — works on Windows WSL2 and Linux (symlink-equivalent)
+      # WSLg X11 socket — accessible to Docker containers on Windows WSL2
       - /mnt/wslg/.X11-unix:/tmp/.X11-unix:rw
-      - /mnt/wslg/runtime-dir:/mnt/wslg/runtime-dir:ro
       # Optional: mount a local maps directory so you can hot-swap CSV files
       # - ./my_maps:/maps:ro
     # Optional GPU passthrough (uncomment on Linux with a discrete GPU)
     # devices:
     #   - /dev/dri:/dev/dri
-    command: ros2 launch av_sim sim.launch.py
+    # Create XDG_RUNTIME_DIR owned by root before launching
+    command: bash -c "mkdir -p /tmp/runtime && chmod 700 /tmp/runtime && ros2 launch av_sim sim.launch.py"
 
   # ── Headless simulation (no GUI) ────────────────────────────────────────────
   # Works on any host — CI, cloud VMs, macOS Docker Desktop, Windows WSL2.
