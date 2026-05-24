@@ -147,6 +147,15 @@ class AStarPlanner(Node):
                     f'No inflated path {seg_start}→{seg_goal}; retrying without inflation')
                 segment = astar(seg_start, seg_goal, combined, self._gw, self._gh)
             if segment is None:
+                # Scan obstacles may be blocking — fall back to static obstacles only
+                static_inf = inflate_obstacles(
+                    self._static_obs, self._gw, self._gh, self._ir)
+                static_inf -= {seg_start, seg_goal}
+                segment = astar(seg_start, seg_goal, static_inf, self._gw, self._gh)
+            if segment is None:
+                segment = astar(
+                    seg_start, seg_goal, self._static_obs, self._gw, self._gh)
+            if segment is None:
                 self.get_logger().error(
                     f'No path at all from {seg_start} to {seg_goal}')
                 return

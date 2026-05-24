@@ -72,7 +72,7 @@ def _cell_centre(gx, gy):
 
 def _obstacle_sdf(gx, gy):
     x, y = _cell_centre(gx, gy)
-    sz = CELL_SIZE * 0.85
+    sz = CELL_SIZE * 0.70
     return f"""\
     <model name="obstacle_{gx}_{gy}">
       <static>true</static>
@@ -142,6 +142,50 @@ def _build_world_sdf(obstacles, checkpoints) -> str:
             name="ignition::gazebo::systems::Sensors">
       <render_engine>ogre2</render_engine>
     </plugin>
+
+    <!-- GUI: top-down camera over the 20x20 grid, align the grid visual -->
+    <gui fullscreen="0">
+      <plugin filename="MinimalScene" name="3D View">
+        <ignition-gui>
+          <title>3D View</title>
+          <property type="bool" key="showTitleBar">false</property>
+          <property type="bool" key="resizable">false</property>
+          <property type="double" key="z">0</property>
+          <property type="string" key="state">docked</property>
+        </ignition-gui>
+        <engine>ogre2</engine>
+        <scene>scene</scene>
+        <ambient_light>0.4 0.4 0.4</ambient_light>
+        <background_color>0.8 0.8 0.8</background_color>
+        <camera_pose>10 -4 28 0 0.75 1.5708</camera_pose>
+      </plugin>
+      <plugin filename="GzSceneManager" name="Scene Manager">
+        <ignition-gui>
+          <property key="resizable" type="bool">false</property>
+          <property key="width" type="double">5</property>
+          <property key="height" type="double">5</property>
+          <property key="state" type="string">floating</property>
+          <property key="showTitleBar" type="bool">false</property>
+        </ignition-gui>
+      </plugin>
+      <plugin filename="InteractiveViewControl" name="Interactive view control">
+        <ignition-gui>
+          <property key="resizable" type="bool">false</property>
+          <property key="width" type="double">5</property>
+          <property key="height" type="double">5</property>
+          <property key="state" type="string">floating</property>
+          <property key="showTitleBar" type="bool">false</property>
+        </ignition-gui>
+      </plugin>
+      <!-- 20x20 grid aligned to our world (0,0)-(20,20), centred at (10,10) -->
+      <plugin filename="Grid3D" name="Grid">
+        <cell_count>20</cell_count>
+        <vertical_cell_count>0</vertical_cell_count>
+        <cell_size>1.0</cell_size>
+        <pose>10 10 0.001 0 0 0</pose>
+        <color>0.5 0.5 0.5 1</color>
+      </plugin>
+    </gui>
 
     <light type="directional" name="sun">
       <cast_shadows>true</cast_shadows>
