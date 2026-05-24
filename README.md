@@ -23,7 +23,137 @@ A ROS2 Humble simulation of a differential-drive robot that autonomously navigat
 
 ---
 
-## System requirements
+## Docker — deploy anywhere
+
+> **This is the recommended way to run the simulation.** No ROS2 or Gazebo installation needed on the host.
+
+### Prerequisites
+
+- [Docker Engine](https://docs.docker.com/engine/install/) 24+
+- [Docker Compose](https://docs.docker.com/compose/install/) v2 (ships with Docker Desktop; on Linux: `sudo apt install docker-compose-plugin`)
+
+### 1 — Clone and build the image
+
+```bash
+git clone https://github.com/yashpatel1314/autonomous_vehicle.git
+cd autonomous_vehicle
+
+docker compose build       # ~10–15 min on first run (downloads ROS2 + Gazebo Fortress)
+```
+
+The image is ~5 GB. Subsequent builds are fast thanks to Docker layer caching.
+
+### 2 — Run
+
+**Linux / WSL2 (with GUI)**
+
+```bash
+# Allow the container to open windows on your display
+xhost +local:docker
+
+docker compose up sim
+```
+
+Gazebo and RViz2 open on your desktop. The robot starts driving within ~5 seconds.
+
+**Headless — no GUI (works on any OS)**
+
+```bash
+docker compose up sim-headless
+```
+
+Gazebo physics and all ROS2 nodes run normally; only the Gazebo GUI and RViz2 are suppressed. Use `ros2 topic echo` from another terminal (see [Monitoring topics inside a running container](#monitoring-topics-inside-a-running-container)) to observe the robot.
+
+**macOS (Docker Desktop)**
+
+```bash
+# Install XQuartz: https://www.xquartz.org
+# In XQuartz → Preferences → Security → check "Allow connections from network clients"
+# Then open a new terminal and:
+xhost +localhost
+DISPLAY=host.docker.internal:0 docker compose up sim
+```
+
+**Windows (Docker Desktop + WSLg)**
+
+WSLg provides an X server automatically — run from a WSL2 terminal:
+```bash
+docker compose up sim
+```
+
+### 3 — Run with custom CSV maps
+
+Mount your local maps directory and pass the paths as launch arguments:
+
+```bash
+docker compose run --rm sim-headless \
+  ros2 launch av_sim sim.launch.py \
+    obstacles_csv:=/maps/obstacles.csv \
+    checkpoints_csv:=/maps/checkpoints.csv
+```
+
+Uncomment the volume mount in `docker-compose.yml` to make this automatic:
+
+```yaml
+# docker-compose.yml → sim service → volumes
+- ./my_maps:/maps:ro
+```
+
+### 4 — Run tests inside the container
+
+```bash
+docker compose up test
+```
+
+Expected output: `85 tests, 0 errors, 0 failures, 0 skipped`.
+
+### Monitoring topics inside a running container
+
+```bash
+# Open a shell in the running container
+docker compose exec sim bash
+
+# Inside the container
+source /opt/ros/humble/setup.bash
+source /ws/install/setup.bash
+ros2 topic echo /current_checkpoint
+ros2 topic echo /mission_complete
+```
+
+### One-liner without docker compose
+
+```bash
+# Headless
+docker run --rm --network host \
+  -e DISPLAY=:0 -e LIBGL_ALWAYS_SOFTWARE=1 \
+  av_sim:latest
+
+# With GUI on Linux
+xhost +local:docker
+docker run --rm --network host \
+  -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
+  -e LIBGL_ALWAYS_SOFTWARE=1 \
+  av_sim:latest ros2 launch av_sim sim.launch.py
+```
+
+### GPU hardware acceleration (Linux only)
+
+By default the container uses software rendering (`LIBGL_ALWAYS_SOFTWARE=1`). To pass through a GPU:
+
+```bash
+# Uncomment in docker-compose.yml:
+#   devices:
+#     - /dev/dri:/dev/dri
+LIBGL_ALWAYS_SOFTWARE=0 docker compose up sim
+```
+
+> **Note:** The GPU lidar sensor (`/scan`) requires the `ogre2` render engine. It is silently skipped on pure software rendering — the rest of the simulation (planning, control, RViz2) continues normally.
+
+---
+
+## System requirements (native install)
+
+> **Skip this section if you are using Docker** — the container includes everything.
 
 | Component | Version |
 |---|---|

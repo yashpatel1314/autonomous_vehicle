@@ -1,0 +1,32 @@
+# Build artifacts — rebuilt inside the container
+build/
+install/
+log/
+
+# Git history not needed in the image
+.git/
+.gitignore
+
+# Docker files themselves
+.dockerignore
+Dockerfile
+docker-compose.yml
+docker/
+
+# Python byte code
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.egg-info/
+
+# Editor / IDE
+.vscode/
+.idea/
+**/*.swp
+
+# Claude Code
+.claude/
+
+# Temporary files
+/tmp/
+*.tmp

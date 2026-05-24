@@ -1,0 +1,78 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# av_sim docker-compose
+#
+# Services
+#   sim          — full simulation with RViz2 (requires X11 display)
+#   sim-headless — simulation without any GUI (works everywhere)
+#   test         — run the 85-test pytest suite and print results
+#
+# Quick start (Linux / WSL2 with WSLg)
+#   xhost +local:docker            # allow the container to use your display
+#   docker compose up sim
+#
+# Headless (CI / server / macOS)
+#   docker compose up sim-headless
+#
+# Custom map
+#   docker compose run --rm sim-headless \
+#     ros2 launch av_sim sim.launch.py \
+#       obstacles_csv:=/maps/obstacles.csv \
+#       checkpoints_csv:=/maps/checkpoints.csv
+# ──────────────────────────────────────────────────────────────────────────────
+
+x-common: &common
+  build: .
+  image: av_sim:latest
+  # host networking gives ROS2 DDS the multicast it needs
+  network_mode: host
+  # software renderer fallback — override with LIBGL_ALWAYS_SOFTWARE=0 if
+  # you have a GPU and want hardware acceleration
+  environment: &common-env
+    DISPLAY: ${DISPLAY:-:0}
+    QT_X11_NO_MITSHM: "1"
+    LIBGL_ALWAYS_SOFTWARE: ${LIBGL_ALWAYS_SOFTWARE:-1}
+    # Silence Ogre2 GPU warnings when running software renderer
+    IGN_IP: "127.0.0.1"
+
+services:
+
+  # ── Full simulation with RViz2 ──────────────────────────────────────────────
+  # Requires an X11-capable display (Linux native, WSL2 with WSLg, or XQuartz
+  # on macOS — see README for setup instructions).
+  sim:
+    <<: *common
+    environment:
+      <<: *common-env
+      # Set to 0 to use hardware GPU (Linux with /dev/dri passthrough)
+      LIBGL_ALWAYS_SOFTWARE: ${LIBGL_ALWAYS_SOFTWARE:-1}
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      # Optional: mount a local maps directory so you can hot-swap CSV files
+      # - ./my_maps:/maps:ro
+    # Optional GPU passthrough (uncomment on Linux with a discrete GPU)
+    # devices:
+    #   - /dev/dri:/dev/dri
+    command: ros2 launch av_sim sim.launch.py
+
+  # ── Headless simulation (no GUI) ────────────────────────────────────────────
+  # Works on any host — CI, cloud VMs, macOS Docker Desktop, Windows WSL2.
+  # Gazebo still runs physics + sensors; only the Gazebo GUI and RViz2 are off.
+  sim-headless:
+    <<: *common
+    environment:
+      <<: *common-env
+      LIBGL_ALWAYS_SOFTWARE: "1"
+    command: ros2 launch av_sim sim.launch.py no_rviz:=true
+
+  # ── Test suite ──────────────────────────────────────────────────────────────
+  test:
+    <<: *common
+    environment:
+      <<: *common-env
+    command: >
+      bash -c "
+        source /opt/ros/humble/setup.bash &&
+        source /ws/install/setup.bash &&
+        colcon test --packages-select av_sim --event-handlers console_direct+ &&
+        colcon test-result --all --verbose
+      "
