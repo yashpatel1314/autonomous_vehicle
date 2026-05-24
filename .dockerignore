@@ -11,7 +11,6 @@ log/
 .dockerignore
 Dockerfile
 docker-compose.yml
-docker/
 
 # Python byte code
 **/__pycache__/
