@@ -131,6 +131,12 @@ class AStarPlanner(Node):
                 and self._reached == self._last_reached):
             return
 
+        # Inflate ONLY static obstacles. Adding scan cells to the inflated set
+        # can seal narrow gate passages when lidar noise falls in the gap region.
+        # Scan obstacles are still respected as point obstacles (no inflation).
+        static_inflated = inflate_obstacles(
+            self._static_obs, self._gw, self._gh, self._ir)
+
         waypoints = [self._current_grid] + list(remaining)
         full_path: list = []
 
@@ -138,19 +144,11 @@ class AStarPlanner(Node):
             seg_start = waypoints[i]
             seg_goal = waypoints[i + 1]
 
-            inflated = inflate_obstacles(combined, self._gw, self._gh, self._ir)
-            inflated -= {seg_start, seg_goal}
-
+            inflated = (static_inflated | self._scan_obs) - {seg_start, seg_goal}
             segment = astar(seg_start, seg_goal, inflated, self._gw, self._gh)
             if segment is None:
-                self.get_logger().warn(
-                    f'No inflated path {seg_start}→{seg_goal}; retrying without inflation')
-                segment = astar(seg_start, seg_goal, combined, self._gw, self._gh)
-            if segment is None:
-                # Scan obstacles may be blocking — fall back to static obstacles only
-                static_inf = inflate_obstacles(
-                    self._static_obs, self._gw, self._gh, self._ir)
-                static_inf -= {seg_start, seg_goal}
+                # Scan obstacles blocking — retry with static inflation only
+                static_inf = static_inflated - {seg_start, seg_goal}
                 segment = astar(seg_start, seg_goal, static_inf, self._gw, self._gh)
             if segment is None:
                 segment = astar(

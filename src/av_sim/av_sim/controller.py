@@ -63,7 +63,8 @@ from av_sim.control_math import (
     STOP_DIST,
 )
 
-WAYPOINT_RADIUS = 0.35    # m — waypoint considered reached
+WAYPOINT_RADIUS = 0.35    # m — path waypoint considered reached
+CHECKPOINT_RADIUS = 0.75  # m — mission checkpoint considered reached (Pure Pursuit cuts corners)
 STOP_ARC = math.radians(45)     # half-angle of emergency-stop scan arc
 STUCK_TIMEOUT = 6.0       # s — declare stuck after no movement
 MIN_MOVE_M = 0.08         # m — threshold for "has moved"
@@ -174,7 +175,7 @@ class Controller(Node):
         if self._next_cp_idx >= len(self._checkpoints):
             return
         cx, cy = self._checkpoints[self._next_cp_idx]
-        if math.hypot(cx - self._robot_x, cy - self._robot_y) <= WAYPOINT_RADIUS:
+        if math.hypot(cx - self._robot_x, cy - self._robot_y) <= CHECKPOINT_RADIUS:
             reached = self._next_cp_idx + 1
             self._cp_pub.publish(Int32(data=reached))
             self.get_logger().info(f'Checkpoint {reached} reached')
