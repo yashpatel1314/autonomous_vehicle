@@ -231,7 +231,7 @@ def _setup(context, pkg_share):
             executable='create',
             arguments=[
                 '-name', 'robot',
-                '-string', robot_desc,
+                '-file', urdf_path,
                 '-x', str(ROBOT_SPAWN_X),
                 '-y', str(ROBOT_SPAWN_Y),
                 '-z', str(ROBOT_SPAWN_Z),
