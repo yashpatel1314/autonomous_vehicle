@@ -43,8 +43,8 @@ Visualization Manager:
       Name: Grid
       Normal Cell Count: 0
       Offset:
-        X: 0
-        Y: 0
+        X: 10
+        Y: 10
         Z: 0
       Plane: XY
       Plane Cell Count: 20
@@ -275,11 +275,11 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 40
+      Scale: 37
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz_default_plugins)
-      X: -5
-      Y: -5
+      X: 10
+      Y: 10
     Saved: ~
 Window Geometry:
   Displays:

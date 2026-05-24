@@ -100,9 +100,6 @@ def _checkpoint_sdf(order, gx, gy):
       <static>true</static>
       <pose>{x} {y} 0.1 0 0 0</pose>
       <link name="link">
-        <collision name="col">
-          <geometry><cylinder><radius>0.25</radius><length>0.2</length></cylinder></geometry>
-        </collision>
         <visual name="vis">
           <geometry><cylinder><radius>0.25</radius><length>0.2</length></cylinder></geometry>
           <material>
