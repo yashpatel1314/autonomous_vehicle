@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AV Sim — Maze Layout Preview</title>
+<style>
+  body { font-family: sans-serif; background: #1a1a2e; color: #eee; margin: 0; padding: 20px; }
+  h1 { color: #e94560; margin-bottom: 4px; }
+  .subtitle { color: #aaa; margin-bottom: 20px; font-size: 14px; }
+  .layout { display: flex; gap: 32px; align-items: flex-start; flex-wrap: wrap; }
+  .grid-wrap { background: #16213e; padding: 16px; border-radius: 8px; }
+  canvas { display: block; border: 2px solid #0f3460; border-radius: 4px; }
+  .legend { background: #16213e; padding: 16px; border-radius: 8px; min-width: 220px; }
+  .legend h3 { margin: 0 0 12px; color: #e94560; }
+  .leg { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; }
+  .swatch { width: 18px; height: 18px; border-radius: 3px; flex-shrink: 0; }
+  .info { background: #16213e; padding: 16px; border-radius: 8px; max-width: 400px; }
+  .info h3 { margin: 0 0 10px; color: #e94560; }
+  .info p { margin: 6px 0; font-size: 13px; line-height: 1.5; color: #ccc; }
+  .info .path { color: #58a6ff; font-weight: bold; }
+  .cp-list { margin-top: 10px; }
+  .cp-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 13px; }
+  .cp-num { background: #2ea043; color: white; border-radius: 50%; width: 20px; height: 20px;
+            display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 11px; flex-shrink: 0; }
+  .warn { background: #2d1b00; border: 1px solid #e3b341; border-radius: 6px; padding: 10px 14px; margin-top: 14px; font-size: 13px; color: #e3b341; }
+</style>
+</head>
+<body>
+<h1>AV Sim — Maze Layout</h1>
+<p class="subtitle">Proposed serpentine maze · 20×20 grid · Robot starts at (0,0), ends at (19,19)</p>
+
+<div class="layout">
+  <div class="grid-wrap">
+    <canvas id="grid" width="500" height="500"></canvas>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:16px;">
+    <div class="legend">
+      <h3>Legend</h3>
+      <div class="leg"><div class="swatch" style="background:#444"></div> Wall (obstacle cell)</div>
+      <div class="leg"><div class="swatch" style="background:#f0f0f0"></div> Open corridor</div>
+      <div class="leg"><div class="swatch" style="background:#cce5ff;border:1px solid #58a6ff"></div> Inflation buffer (blocked by planner)</div>
+      <div class="leg"><div class="swatch" style="background:#1f6feb"></div> Robot start (0,0)</div>
+      <div class="leg"><div class="swatch" style="background:#2ea043"></div> Gate checkpoint</div>
+      <div class="leg"><div class="swatch" style="background:#e94560"></div> Destination (19,19)</div>
+      <div class="leg"><div class="swatch" style="background:#ffe066;opacity:.7"></div> Planned robot path</div>
+    </div>
+
+    <div class="info">
+      <h3>Maze Design</h3>
+      <p><span class="path">5 horizontal corridor lanes</span> (3 cells wide each) separated by 1-cell-thick walls. The robot serpentines through all 5 lanes.</p>
+      <p><strong>68 obstacle cells</strong> form the 4 wall rows. With <code>inflation_radius=1</code> the planner treats cells adjacent to walls as blocked — leaving a <strong>1-cell passable centerline</strong> through each corridor.</p>
+      <p>Gate checkpoints sit at the <strong>lane-switching connectors</strong> — where the wall ends create a natural pinch point the robot must pass through to continue. The robot drives <em>through</em> the green sphere and continues to the next gate.</p>
+
+      <div class="cp-list">
+        <div class="cp-item"><div class="cp-num">1</div> (14, 1) — east end of Lane 1, approaching right connector</div>
+        <div class="cp-item"><div class="cp-num">2</div> (4, 5) — west end of Lane 2, approaching left connector</div>
+        <div class="cp-item"><div class="cp-num">3</div> (14, 9) — east end of Lane 3, approaching right connector</div>
+        <div class="cp-item"><div class="cp-num">4</div> (4, 13) — west end of Lane 4, approaching left connector</div>
+        <div class="cp-item"><div class="cp-num">5</div> (10, 18) — centre of Lane 5, final stretch to (19,19)</div>
+      </div>
+
+      <div class="warn">
+        ⚠️ <strong>Flickering fix also planned:</strong> Adding <code>&lt;render_rate&gt;60&lt;/render_rate&gt;</code> to the MinimalScene plugin and <code>QSG_RENDER_LOOP=basic</code> to docker-compose.yml to cap the Ogre render loop.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const GRID = 20;
+const C = 500 / GRID; // cell size in px
+
+// Wall cells: 4 horizontal rows with gaps for connectors
+const walls = new Set();
+
+// y=3: x=0..16 (gap at 17,18,19 — right connector)
+for (let x = 0; x <= 16; x++) walls.add(`${x},3`);
+
+// y=7: x=3..19 (gap at 0,1,2 — left connector)
+for (let x = 3; x <= 19; x++) walls.add(`${x},7`);
+
+// y=11: x=0..16 (gap at 17,18,19 — right connector)
+for (let x = 0; x <= 16; x++) walls.add(`${x},11`);
+
+// y=15: x=3..19 (gap at 0,1,2 — left connector)
+for (let x = 3; x <= 19; x++) walls.add(`${x},15`);
+
+// Compute inflation (Chebyshev radius=1)
+const inflated = new Set();
+for (const key of walls) {
+  const [wx, wy] = key.split(',').map(Number);
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dy = -1; dy <= 1; dy++) {
+      const nx = wx + dx, ny = wy + dy;
+      if (nx >= 0 && nx < GRID && ny >= 0 && ny < GRID && !walls.has(`${nx},${ny}`)) {
+        inflated.add(`${nx},${ny}`);
+      }
+    }
+  }
+}
+
+// Checkpoints [x, y, label]
+const checkpoints = [
+  [14, 1, '1'], [4, 5, '2'], [14, 9, '3'], [4, 13, '4'], [10, 18, '5']
+];
+
+// Simple path trace (approximation of what A* would find)
+const path = [];
+// Lane 1: go east along y=1
+for (let x = 0; x <= 18; x++) path.push([x, 1]);
+// Right connector
+for (let y = 2; y <= 4; y++) path.push([18, y]);
+// Lane 2: go west along y=5
+for (let x = 18; x >= 1; x--) path.push([x, 5]);
+// Left connector
+for (let y = 6; y <= 8; y++) path.push([1, y]);
+// Lane 3: go east along y=9
+for (let x = 1; x <= 18; x++) path.push([x, 9]);
+// Right connector
+for (let y = 10; y <= 12; y++) path.push([18, y]);
+// Lane 4: go west along y=13
+for (let x = 18; x >= 1; x--) path.push([x, 13]);
+// Left connector
+for (let y = 14; y <= 16; y++) path.push([1, y]);
+// Lane 5: go east along y=17
+for (let x = 1; x <= 19; x++) path.push([x, 17]);
+// Final stretch to (19,19)
+for (let y = 18; y <= 19; y++) path.push([19, y]);
+
+const canvas = document.getElementById('grid');
+const ctx = canvas.getContext('2d');
+
+function draw() {
+  ctx.clearRect(0, 0, 500, 500);
+
+  for (let y = 0; y < GRID; y++) {
+    for (let x = 0; x < GRID; x++) {
+      const key = `${x},${y}`;
+      // Draw in screen coords: x goes right, y goes UP (flip y for natural top-down view)
+      const px = x * C;
+      const py = (GRID - 1 - y) * C;
+
+      if (walls.has(key)) {
+        ctx.fillStyle = '#3a3a4a';
+      } else if (inflated.has(key)) {
+        ctx.fillStyle = '#d0e8ff';
+      } else {
+        ctx.fillStyle = '#f5f5f5';
+      }
+      ctx.fillRect(px, py, C, C);
+    }
+  }
+
+  // Draw path
+  ctx.fillStyle = 'rgba(255, 224, 102, 0.5)';
+  for (const [x, y] of path) {
+    const px = x * C;
+    const py = (GRID - 1 - y) * C;
+    ctx.fillRect(px, py, C, C);
+  }
+
+  // Grid lines
+  ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= GRID; i++) {
+    ctx.beginPath(); ctx.moveTo(i * C, 0); ctx.lineTo(i * C, 500); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, i * C); ctx.lineTo(500, i * C); ctx.stroke();
+  }
+
+  // Re-draw wall outlines on top for crispness
+  ctx.fillStyle = '#3a3a4a';
+  for (const key of walls) {
+    const [x, y] = key.split(',').map(Number);
+    const px = x * C;
+    const py = (GRID - 1 - y) * C;
+    ctx.fillRect(px, py, C, C);
+  }
+
+  // Checkpoints
+  for (const [x, y, label] of checkpoints) {
+    const px = x * C + C / 2;
+    const py = (GRID - 1 - y) * C + C / 2;
+    ctx.beginPath();
+    ctx.arc(px, py, C * 0.38, 0, Math.PI * 2);
+    ctx.fillStyle = '#2ea043';
+    ctx.fill();
+    ctx.fillStyle = 'white';
+    ctx.font = `bold ${Math.round(C * 0.5)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, px, py);
+  }
+
+  // Robot start
+  const sx = 0 * C + C / 2, sy = (GRID - 1) * C + C / 2;
+  ctx.beginPath(); ctx.arc(sx, sy, C * 0.38, 0, Math.PI * 2);
+  ctx.fillStyle = '#1f6feb'; ctx.fill();
+  ctx.fillStyle = 'white';
+  ctx.font = `bold ${Math.round(C * 0.4)}px sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('S', sx, sy);
+
+  // Destination
+  const ex = 19 * C + C / 2, ey = 0 * C + C / 2;
+  ctx.beginPath(); ctx.arc(ex, ey, C * 0.38, 0, Math.PI * 2);
+  ctx.fillStyle = '#e94560'; ctx.fill();
+  ctx.fillStyle = 'white';
+  ctx.font = `bold ${Math.round(C * 0.4)}px sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('E', ex, ey);
+}
+
+draw();
+</script>
+</body>
+</html>
