@@ -2,7 +2,7 @@
 import math
 import pytest
 
-from av_sim.controller import _yaw_from_quat, _normalise
+from av_sim.control_math import _yaw_from_quat, _normalise
 from av_sim.control_math import (
     compute_cmd, heading_error,
     pure_pursuit_curvature, find_lookahead_point, pure_pursuit_cmd,

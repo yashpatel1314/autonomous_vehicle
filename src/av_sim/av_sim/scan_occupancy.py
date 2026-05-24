@@ -16,12 +16,16 @@ Topic published:
 import math
 import time
 
-import rclpy
-from rclpy.node import Node
-from geometry_msgs.msg import Point
-from nav_msgs.msg import GridCells, Odometry
-from sensor_msgs.msg import LaserScan
-from std_msgs.msg import Header
+try:
+    import rclpy
+    from rclpy.node import Node
+    from geometry_msgs.msg import Point
+    from nav_msgs.msg import GridCells, Odometry
+    from sensor_msgs.msg import LaserScan
+    from std_msgs.msg import Header
+except ImportError:
+    rclpy = None  # type: ignore[assignment]
+    Node = object  # type: ignore[assignment,misc]
 
 # Laser link offset from base_link (must match robot.urdf)
 LASER_OFFSET_X = 0.20   # m forward

@@ -1,6 +1,13 @@
 """Pure controller math — no ROS dependencies."""
 import math
 
+
+def _yaw_from_quat(q) -> float:
+    """Extract yaw (rotation about Z) from a quaternion object with x/y/z/w fields."""
+    siny = 2.0 * (q.w * q.z + q.x * q.y)
+    cosy = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+    return math.atan2(siny, cosy)
+
 KP_LINEAR = 0.5
 KP_ANGULAR = 2.0
 MAX_LINEAR = 0.5

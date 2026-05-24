@@ -52,6 +52,7 @@ from visualization_msgs.msg import Marker, MarkerArray
 
 from av_sim.control_math import (
     _normalise,
+    _yaw_from_quat,
     find_lookahead_point,
     pure_pursuit_cmd,
     pure_pursuit_curvature,
@@ -66,16 +67,6 @@ WAYPOINT_RADIUS = 0.35    # m — waypoint considered reached
 STOP_ARC = math.radians(45)     # half-angle of emergency-stop scan arc
 STUCK_TIMEOUT = 6.0       # s — declare stuck after no movement
 MIN_MOVE_M = 0.08         # m — threshold for "has moved"
-
-
-def _yaw_from_quat(q):
-    siny = 2.0 * (q.w * q.z + q.x * q.y)
-    cosy = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
-    return math.atan2(siny, cosy)
-
-
-# Keep module-level alias so tests that import from this module still work.
-_normalise = _normalise  # noqa: F811
 
 
 class Controller(Node):
