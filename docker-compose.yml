@@ -31,7 +31,6 @@ x-common: &common
     DISPLAY: ${DISPLAY:-:0}
     QT_X11_NO_MITSHM: "1"
     LIBGL_ALWAYS_SOFTWARE: ${LIBGL_ALWAYS_SOFTWARE:-1}
-    # Silence Ogre2 GPU warnings when running software renderer
     IGN_IP: "127.0.0.1"
 
 services:
@@ -48,7 +47,10 @@ services:
       # Root-owned runtime dir so Ignition GUI IPC socket can be created
       XDG_RUNTIME_DIR: /tmp/runtime
       LIBGL_ALWAYS_SOFTWARE: ${LIBGL_ALWAYS_SOFTWARE:-1}
-      # Required for Ogre2 to initialise under Mesa software renderer
+      # Force Qt to use the X11/XCB platform plugin — without this Qt does not
+      # connect to the X11 display at all in Docker + WSLg environments
+      QT_QPA_PLATFORM: xcb
+      # Required for Ogre to initialise under Mesa software renderer
       MESA_GL_VERSION_OVERRIDE: "3.3"
       MESA_GLSL_VERSION_OVERRIDE: "330"
     volumes:

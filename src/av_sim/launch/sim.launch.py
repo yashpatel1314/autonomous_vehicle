@@ -138,7 +138,7 @@ def _build_world_sdf(obstacles, checkpoints) -> str:
             name="ignition::gazebo::systems::SceneBroadcaster"/>
     <plugin filename="ignition-gazebo-sensors-system"
             name="ignition::gazebo::systems::Sensors">
-      <render_engine>ogre2</render_engine>
+      <render_engine>ogre</render_engine>
     </plugin>
 
     <!-- GUI: top-down camera over the 20x20 grid, align the grid visual -->
@@ -151,7 +151,7 @@ def _build_world_sdf(obstacles, checkpoints) -> str:
           <property type="double" key="z">0</property>
           <property type="string" key="state">docked</property>
         </ignition-gui>
-        <engine>ogre2</engine>
+        <engine>ogre</engine>
         <scene>scene</scene>
         <ambient_light>0.4 0.4 0.4</ambient_light>
         <background_color>0.8 0.8 0.8</background_color>

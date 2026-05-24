@@ -471,9 +471,10 @@ Key constants that control navigation behaviour (all in source — no parameter 
 ```bash
 export LIBGL_ALWAYS_SOFTWARE=1
 export MESA_GL_VERSION_OVERRIDE=3.3
+export QT_QPA_PLATFORM=xcb
 ros2 launch av_sim sim.launch.py
 ```
 
 **GPU lidar not working / no `/scan`**
 - Confirm `ignition-gazebo-sensors-system` is available: `ign plugin --list | grep sensors`
-- The sensor requires `ogre2`; on pure software rendering it may be unavailable. The rest of the simulation continues without it.
+- The sensor requires a working render engine; on pure software rendering it may produce no data. The rest of the simulation continues without it.
