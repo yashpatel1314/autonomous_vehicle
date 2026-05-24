@@ -199,8 +199,8 @@ def _setup(context, pkg_share):
 
     # Gazebo Fortress
     gz_sim = Node(
-        package='ros_gz_sim',
-        executable='gz_sim',
+        package='ros_ign_gazebo',
+        executable='ign_gazebo',
         arguments=[WORLD_TMP_PATH, '-r'],
         output='screen',
     )
@@ -228,7 +228,7 @@ def _setup(context, pkg_share):
     spawn = TimerAction(
         period=3.0,
         actions=[Node(
-            package='ros_gz_sim',
+            package='ros_ign_gazebo',
             executable='create',
             arguments=[
                 '-name', 'robot',
@@ -242,9 +242,9 @@ def _setup(context, pkg_share):
         )],
     )
 
-    # ros_gz_bridge: cmd_vel (ROS→IGN), odom/clock/scan (IGN→ROS)
+    # ros_ign_bridge: cmd_vel (ROS→IGN), odom/clock/scan (IGN→ROS)
     bridge = Node(
-        package='ros_gz_bridge',
+        package='ros_ign_bridge',
         executable='parameter_bridge',
         arguments=[
             '/cmd_vel@geometry_msgs/msg/Twist]ignition.msgs.Twist',

@@ -214,8 +214,8 @@ LIBGL_ALWAYS_SOFTWARE=0 docker compose up sim
 ```bash
 sudo apt update && sudo apt install -y \
   ros-humble-robot-state-publisher \
-  ros-humble-ros-gz-sim \
-  ros-humble-ros-gz-bridge \
+  ros-humble-ros-ign-gazebo \
+  ros-humble-ros-ign-bridge \
   ros-humble-rviz2 \
   ros-humble-tf2-ros \
   ros-humble-visualization-msgs

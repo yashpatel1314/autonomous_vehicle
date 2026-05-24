@@ -20,8 +20,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ── 2. Install Gazebo Fortress and ROS–Gazebo integration packages ────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ignition-fortress \
-        ros-humble-ros-gz-sim \
-        ros-humble-ros-gz-bridge \
+        ros-humble-ros-ign-gazebo \
+        ros-humble-ros-ign-bridge \
         ros-humble-robot-state-publisher \
         ros-humble-tf2-ros \
         ros-humble-visualization-msgs \
