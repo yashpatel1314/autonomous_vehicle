@@ -28,7 +28,7 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, OpaqueFunction, TimerAction
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, OpaqueFunction, TimerAction
 from launch.conditions import UnlessCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -197,11 +197,10 @@ def _setup(context, pkg_share):
     with open(urdf_path, 'r') as f:
         robot_desc = f.read()
 
-    # Gazebo Fortress
-    gz_sim = Node(
-        package='ros_ign_gazebo',
-        executable='ign_gazebo',
-        arguments=[WORLD_TMP_PATH, '-r'],
+    # Gazebo Fortress — call ign CLI directly; ros_ign_gazebo does not ship
+    # an ign_gazebo wrapper binary (ign is provided by ignition-fortress apt pkg)
+    gz_sim = ExecuteProcess(
+        cmd=['ign', 'gazebo', WORLD_TMP_PATH, '-r'],
         output='screen',
     )
 
