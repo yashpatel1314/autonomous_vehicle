@@ -41,8 +41,8 @@ CELL_SIZE = 1.0
 GRID_W = 20
 GRID_H = 20
 
-ROBOT_SPAWN_X = 10.5
-ROBOT_SPAWN_Y = 10.5
+ROBOT_SPAWN_X = 0.5
+ROBOT_SPAWN_Y = 0.5
 ROBOT_SPAWN_Z = 0.175
 
 WORLD_NAME = 'sim_world'
@@ -156,6 +156,7 @@ def _build_world_sdf(obstacles, checkpoints) -> str:
         <ambient_light>0.4 0.4 0.4</ambient_light>
         <background_color>0.8 0.8 0.8</background_color>
         <camera_pose>10 -4 28 0 0.75 1.5708</camera_pose>
+        <render_rate>60</render_rate>
       </plugin>
       <plugin filename="GzSceneManager" name="Scene Manager">
         <ignition-gui>

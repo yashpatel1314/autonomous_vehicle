@@ -53,6 +53,9 @@ services:
       # Required for Ogre to initialise under Mesa software renderer
       MESA_GL_VERSION_OVERRIDE: "3.3"
       MESA_GLSL_VERSION_OVERRIDE: "330"
+      # Prevents Qt Scene Graph from spinning an uncapped render loop that
+      # hammers X11 and causes flickering under the software renderer
+      QSG_RENDER_LOOP: basic
     volumes:
       # WSLg X11 socket — accessible to Docker containers on Windows WSL2
       - /mnt/wslg/.X11-unix:/tmp/.X11-unix:rw
