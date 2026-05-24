@@ -48,6 +48,9 @@ services:
       # Root-owned runtime dir so Ignition GUI IPC socket can be created
       XDG_RUNTIME_DIR: /tmp/runtime
       LIBGL_ALWAYS_SOFTWARE: ${LIBGL_ALWAYS_SOFTWARE:-1}
+      # Required for Ogre2 to initialise under Mesa software renderer
+      MESA_GL_VERSION_OVERRIDE: "3.3"
+      MESA_GLSL_VERSION_OVERRIDE: "330"
     volumes:
       # WSLg X11 socket — accessible to Docker containers on Windows WSL2
       - /mnt/wslg/.X11-unix:/tmp/.X11-unix:rw
