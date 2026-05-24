@@ -335,7 +335,7 @@ ros2 launch av_sim sim.launch.py
 | Cell size | 1.0 m |
 | World footprint | 20 m × 20 m |
 | Cell centre formula | `world_x = (grid_x + 0.5) * cell_size` |
-| Robot spawn | grid (1, 1) → world (1.5, 1.5) |
+| Robot spawn | world (0, 0) — corner of grid (0, 0) |
 
 ---
 

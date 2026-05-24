@@ -20,7 +20,7 @@ Grid / world parameters (change here to experiment):
   CELL_SIZE = 1.0 m   — physical size of one grid cell
   GRID_W    = 20      — number of columns
   GRID_H    = 20      — number of rows
-  Robot spawns at grid (1, 1) → world (1.5, 1.5), yaw = 0.
+  Robot spawns at world (0, 0) — grid (0, 0) corner, yaw = 0.
 """
 
 import csv
@@ -40,8 +40,8 @@ CELL_SIZE = 1.0
 GRID_W = 20
 GRID_H = 20
 
-ROBOT_SPAWN_X = 1.5
-ROBOT_SPAWN_Y = 1.5
+ROBOT_SPAWN_X = 0.0
+ROBOT_SPAWN_Y = 0.0
 ROBOT_SPAWN_Z = 0.175
 
 WORLD_NAME = 'sim_world'

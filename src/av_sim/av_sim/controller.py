@@ -132,8 +132,6 @@ class Controller(Node):
                       for ps in msg.poses]
         self._wp_idx = 0
         self._done = False
-        self._next_cp_idx = 0
-        self._mission_complete_sent = False
         self.get_logger().info(f'Received path with {len(self._path)} waypoints')
 
     def _cb_odom(self, msg: Odometry):
