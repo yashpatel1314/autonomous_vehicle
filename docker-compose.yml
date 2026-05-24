@@ -2,18 +2,15 @@
 # av_sim docker-compose
 #
 # Services
-#   sim          — Gazebo simulation (no RViz2 by default)
-#   sim-headless — Gazebo physics only, no GUI at all (works everywhere)
+#   sim          — Gazebo simulation with GUI (WSL2 + WSLg on Windows)
+#   sim-headless — Gazebo physics only, no GUI (works everywhere)
 #   test         — run the 85-test pytest suite and print results
 #
-# Quick start (Linux / WSL2 with WSLg)
-#   xhost +local:docker            # allow the container to use your display
+# Quick start (Windows WSL2 — run from Ubuntu WSL2 terminal)
 #   docker compose up sim
+#   Gazebo opens as a native window via WSLg automatically.
 #
-# With RViz2 (requires X11)
-#   docker compose run --rm sim ros2 launch av_sim sim.launch.py no_rviz:=false
-#
-# Headless (CI / server / macOS)
+# Headless (CI / server / macOS / Windows without WSLg)
 #   docker compose up sim-headless
 #
 # Custom map
@@ -39,17 +36,22 @@ x-common: &common
 
 services:
 
-  # ── Gazebo simulation (Gazebo GUI only, no RViz2) ────────────────────────────
-  # Requires an X11-capable display (Linux native, WSL2 with WSLg, or XQuartz
-  # on macOS — see README for setup instructions).
+  # ── Gazebo simulation with GUI ───────────────────────────────────────────────
+  # Uses WSLg X11 socket path (/mnt/wslg/.X11-unix) which is accessible to
+  # Docker containers on Windows WSL2, unlike /tmp/.X11-unix which is only
+  # in the docker-desktop distro and not the Ubuntu WSL2 distro.
   sim:
     <<: *common
     environment:
       <<: *common-env
-      # Set to 0 to use hardware GPU (Linux with /dev/dri passthrough)
+      DISPLAY: ${DISPLAY:-:0}
+      WAYLAND_DISPLAY: ${WAYLAND_DISPLAY:-wayland-0}
+      XDG_RUNTIME_DIR: /mnt/wslg/runtime-dir
       LIBGL_ALWAYS_SOFTWARE: ${LIBGL_ALWAYS_SOFTWARE:-1}
     volumes:
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      # WSLg socket — works on Windows WSL2 and Linux (symlink-equivalent)
+      - /mnt/wslg/.X11-unix:/tmp/.X11-unix:rw
+      - /mnt/wslg/runtime-dir:/mnt/wslg/runtime-dir:ro
       # Optional: mount a local maps directory so you can hot-swap CSV files
       # - ./my_maps:/maps:ro
     # Optional GPU passthrough (uncomment on Linux with a discrete GPU)
@@ -65,7 +67,7 @@ services:
     environment:
       <<: *common-env
       LIBGL_ALWAYS_SOFTWARE: "1"
-    command: ros2 launch av_sim sim.launch.py no_rviz:=true
+    command: ros2 launch av_sim sim.launch.py headless:=true
 
   # ── Test suite ──────────────────────────────────────────────────────────────
   test:

@@ -50,13 +50,13 @@ docker compose build
 
 **Step 3 — Run (with GUI via WSLg)**
 
-WSLg is built into Windows 11 and Windows 10 22H2+ — it provides an X server automatically. Run from a WSL2 terminal:
+WSLg is built into Windows 11 and Windows 10 22H2+ — it provides an X server automatically. Run from a **WSL2 Ubuntu terminal** (not PowerShell):
 
 ```bash
 docker compose up sim
 ```
 
-Gazebo and RViz2 open as native windows on your desktop. The robot starts driving within ~5 seconds.
+Gazebo opens as a native window on your desktop. The robot starts driving within ~5 seconds.
 
 **No GUI / headless (works on all Windows versions)**
 
@@ -263,6 +263,7 @@ The simulation starts, Gazebo opens, and the robot begins driving autonomously w
 | `obstacles_csv` | `<pkg>/config/obstacles.csv` | Absolute path to obstacles CSV |
 | `checkpoints_csv` | `<pkg>/config/checkpoints.csv` | Absolute path to checkpoints CSV |
 | `no_rviz` | `true` | Set to `false` to launch RViz2 alongside Gazebo |
+| `headless` | `false` | Set to `true` to run Gazebo server-only (no GUI window, no display required) |
 
 ### Examples
 
@@ -275,14 +276,17 @@ ros2 launch av_sim sim.launch.py \
   obstacles_csv:=/home/user/maps/my_obstacles.csv \
   checkpoints_csv:=/home/user/maps/my_checkpoints.csv
 
-# Headless — no RViz2 window
+# No RViz2 window (Gazebo GUI still opens)
 ros2 launch av_sim sim.launch.py no_rviz:=true
 
-# Custom map, headless
+# Fully headless — no Gazebo window either (no display required)
+ros2 launch av_sim sim.launch.py headless:=true
+
+# Custom map, fully headless
 ros2 launch av_sim sim.launch.py \
   obstacles_csv:=/home/user/maps/my_obstacles.csv \
   checkpoints_csv:=/home/user/maps/my_checkpoints.csv \
-  no_rviz:=true
+  headless:=true
 ```
 
 ---

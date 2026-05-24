@@ -15,6 +15,7 @@ Launch arguments:
   obstacles_csv   — path to obstacles CSV  (default: package config/obstacles.csv)
   checkpoints_csv — path to checkpoints CSV (default: package config/checkpoints.csv)
   no_rviz         — set to 'true' to skip RViz2 (useful headless / in CI)
+  headless        — set to 'true' to run Gazebo server-only (no GUI, no display needed)
 
 Grid / world parameters (change here to experiment):
   CELL_SIZE = 1.0 m   — physical size of one grid cell
@@ -218,6 +219,7 @@ def _build_world_sdf(obstacles, checkpoints) -> str:
 def _setup(context, pkg_share):
     obstacles_csv = context.launch_configurations['obstacles_csv']
     checkpoints_csv = context.launch_configurations['checkpoints_csv']
+    headless = context.launch_configurations.get('headless', 'false').lower() == 'true'
 
     urdf_path = os.path.join(pkg_share, 'urdf', 'robot.urdf')
     rviz_cfg = os.path.join(pkg_share, 'rviz', 'av_sim.rviz')
@@ -233,8 +235,11 @@ def _setup(context, pkg_share):
 
     # Gazebo Fortress — call ign CLI directly; ros_ign_gazebo does not ship
     # an ign_gazebo wrapper binary (ign is provided by ignition-fortress apt pkg)
+    # headless:=true passes -s (server-only) so no display is required
+    gz_cmd = ['ign', 'gazebo', '-s', WORLD_TMP_PATH, '-r'] if headless \
+        else ['ign', 'gazebo', WORLD_TMP_PATH, '-r']
     gz_sim = ExecuteProcess(
-        cmd=['ign', 'gazebo', WORLD_TMP_PATH, '-r'],
+        cmd=gz_cmd,
         output='screen',
     )
 
@@ -362,6 +367,11 @@ def generate_launch_description():
             'no_rviz',
             default_value='true',
             description='Set to false to launch RViz2 alongside Gazebo',
+        ),
+        DeclareLaunchArgument(
+            'headless',
+            default_value='false',
+            description='Run Gazebo server-only (no GUI window, no display required)',
         ),
         OpaqueFunction(function=lambda ctx: _setup(ctx, pkg_share)),
     ])
