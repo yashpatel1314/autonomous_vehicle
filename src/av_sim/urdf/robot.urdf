@@ -189,7 +189,7 @@
         </noise>
       </lidar>
       <always_on>true</always_on>
-      <visualize>true</visualize>
+      <visualize>false</visualize>
     </sensor>
   </gazebo>
 

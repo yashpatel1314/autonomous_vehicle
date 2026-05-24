@@ -125,7 +125,7 @@ def _build_world_sdf(obstacles, checkpoints) -> str:
   <world name="{WORLD_NAME}">
 
     <physics name="1ms" type="ignored">
-      <max_step_size>0.001</max_step_size>
+      <max_step_size>0.004</max_step_size>
       <real_time_factor>1.0</real_time_factor>
     </physics>
 
