@@ -101,6 +101,30 @@
     <origin xyz="-0.20 0.0 -0.125" rpy="0 0 0"/>
   </joint>
 
+  <!-- LIDAR LINK -->
+  <link name="laser_link">
+    <visual>
+      <geometry><cylinder length="0.04" radius="0.04"/></geometry>
+      <material name="black"><color rgba="0.1 0.1 0.1 1.0"/></material>
+    </visual>
+    <collision>
+      <geometry><cylinder length="0.04" radius="0.04"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.1"/>
+      <inertia ixx="0.000021" ixy="0.0" ixz="0.0"
+               iyy="0.000021" iyz="0.0"
+               izz="0.000008"/>
+    </inertial>
+  </link>
+
+  <!-- Mounted on the front-top of the body -->
+  <joint name="laser_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="laser_link"/>
+    <origin xyz="0.20 0.0 0.10" rpy="0 0 0"/>
+  </joint>
+
   <!-- ============================================================
        Gazebo Fortress (Ignition Gazebo 6) plugins
   ============================================================ -->
@@ -136,6 +160,37 @@
   <gazebo reference="caster_wheel">
     <mu1>0.0</mu1>
     <mu2>0.0</mu2>
+  </gazebo>
+
+  <!-- 2D lidar sensor (360° at 10 Hz, 0.1–12 m range) -->
+  <gazebo reference="laser_link">
+    <sensor name="lidar" type="gpu_lidar">
+      <ignition_frame_id>laser_link</ignition_frame_id>
+      <topic>/scan</topic>
+      <update_rate>10</update_rate>
+      <lidar>
+        <scan>
+          <horizontal>
+            <samples>360</samples>
+            <resolution>1</resolution>
+            <min_angle>-3.14159265</min_angle>
+            <max_angle>3.14159265</max_angle>
+          </horizontal>
+        </scan>
+        <range>
+          <min>0.1</min>
+          <max>12.0</max>
+          <resolution>0.01</resolution>
+        </range>
+        <noise>
+          <type>gaussian</type>
+          <mean>0.0</mean>
+          <stddev>0.01</stddev>
+        </noise>
+      </lidar>
+      <always_on>true</always_on>
+      <visualize>true</visualize>
+    </sensor>
   </gazebo>
 
 </robot>

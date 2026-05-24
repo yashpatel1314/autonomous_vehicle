@@ -6,7 +6,7 @@ package_name = 'av_sim'
 
 setup(
     name=package_name,
-    version='0.1.0',
+    version='0.2.0',
     packages=find_packages(exclude=['test']),
     data_files=[
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
@@ -14,6 +14,8 @@ setup(
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
         (os.path.join('share', package_name, 'config'), glob('config/*.csv')),
         (os.path.join('share', package_name, 'urdf'), glob('urdf/*.urdf')),
+        (os.path.join('share', package_name, 'rviz'), glob('rviz/*.rviz')),
+        (os.path.join('share', package_name), ['pytest.ini']),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -27,6 +29,7 @@ setup(
             'map_manager = av_sim.map_manager:main',
             'astar_planner = av_sim.astar_planner:main',
             'controller = av_sim.controller:main',
+            'scan_occupancy = av_sim.scan_occupancy:main',
         ],
     },
 )

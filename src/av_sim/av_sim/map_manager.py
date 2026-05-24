@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""
-Map Manager node.
+"""Map Manager node.
 
-Reads obstacles.csv and checkpoints.csv from the config directory,
+Reads obstacles.csv and checkpoints.csv from explicit file paths (ROS params),
 then publishes their contents as ROS2 topics for the planner to consume.
+
+Parameters:
+  obstacles_csv   — absolute path to obstacles CSV
+  checkpoints_csv — absolute path to checkpoints CSV
+  cell_size       — metres per grid cell (default 1.0)
 
 Topics published:
   /map/obstacles    nav_msgs/GridCells   — one cell per obstacle row
@@ -11,7 +15,6 @@ Topics published:
 """
 
 import csv
-import os
 
 import rclpy
 from rclpy.node import Node
@@ -25,21 +28,20 @@ class MapManager(Node):
     def __init__(self):
         super().__init__('map_manager')
 
-        self.declare_parameter('config_dir', '')
+        self.declare_parameter('obstacles_csv', '')
+        self.declare_parameter('checkpoints_csv', '')
         self.declare_parameter('cell_size', 1.0)
 
-        config_dir = self.get_parameter('config_dir').get_parameter_value().string_value
+        obs_path = self.get_parameter('obstacles_csv').get_parameter_value().string_value
+        cp_path = self.get_parameter('checkpoints_csv').get_parameter_value().string_value
         self._cell_size = self.get_parameter('cell_size').get_parameter_value().double_value
 
-        self._obstacles = self._load_obstacles(
-            os.path.join(config_dir, 'obstacles.csv'))
-        self._checkpoints = self._load_checkpoints(
-            os.path.join(config_dir, 'checkpoints.csv'))
+        self._obstacles = self._load_obstacles(obs_path)
+        self._checkpoints = self._load_checkpoints(cp_path)
 
         self._obs_pub = self.create_publisher(GridCells, '/map/obstacles', 10)
         self._cp_pub = self.create_publisher(PoseArray, '/map/checkpoints', 10)
 
-        # Publish at 1 Hz so late-joining subscribers always get data.
         self.create_timer(1.0, self._publish)
 
         self.get_logger().info(
@@ -57,15 +59,11 @@ class MapManager(Node):
         return obstacles
 
     def _load_checkpoints(self, path: str):
-        checkpoints = []
         with open(path, newline='') as f:
             rows = sorted(csv.DictReader(f), key=lambda r: int(r['order']))
-        for row in rows:
-            checkpoints.append((int(row['grid_x']), int(row['grid_y'])))
-        return checkpoints
+        return [(int(r['grid_x']), int(r['grid_y'])) for r in rows]
 
     def _grid_to_world(self, gx: int, gy: int):
-        """Return (x, y) world coordinates at the centre of grid cell (gx, gy)."""
         cs = self._cell_size
         return (gx + 0.5) * cs, (gy + 0.5) * cs
 
@@ -75,7 +73,6 @@ class MapManager(Node):
         stamp = self.get_clock().now().to_msg()
         header = Header(stamp=stamp, frame_id='map')
 
-        # --- obstacles ---
         gc = GridCells()
         gc.header = header
         gc.cell_width = self._cell_size
@@ -85,7 +82,6 @@ class MapManager(Node):
             gc.cells.append(Point(x=wx, y=wy, z=0.0))
         self._obs_pub.publish(gc)
 
-        # --- checkpoints ---
         pa = PoseArray()
         pa.header = header
         for gx, gy in self._checkpoints:
