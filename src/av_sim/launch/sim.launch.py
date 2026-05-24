@@ -138,10 +138,10 @@ def _build_world_sdf(obstacles, checkpoints) -> str:
             name="ignition::gazebo::systems::SceneBroadcaster"/>
     <plugin filename="ignition-gazebo-sensors-system"
             name="ignition::gazebo::systems::Sensors">
-      <render_engine>ogre2</render_engine>
+      <render_engine>ogre</render_engine>
     </plugin>
 
-    <!-- GUI: top-down camera over the 20x20 grid -->
+    <!-- GUI: top-down camera over the 20x20 grid, align the grid visual -->
     <gui fullscreen="0">
       <plugin filename="MinimalScene" name="3D View">
         <ignition-gui>
@@ -151,7 +151,7 @@ def _build_world_sdf(obstacles, checkpoints) -> str:
           <property type="double" key="z">0</property>
           <property type="string" key="state">docked</property>
         </ignition-gui>
-        <engine>ogre2</engine>
+        <engine>ogre</engine>
         <scene>scene</scene>
         <ambient_light>0.4 0.4 0.4</ambient_light>
         <background_color>0.8 0.8 0.8</background_color>
@@ -175,6 +175,7 @@ def _build_world_sdf(obstacles, checkpoints) -> str:
           <property key="showTitleBar" type="bool">false</property>
         </ignition-gui>
       </plugin>
+
     </gui>
 
     <light type="directional" name="sun">
@@ -364,8 +365,8 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'no_rviz',
-            default_value='false',
-            description='Set to true to skip launching RViz2',
+            default_value='true',
+            description='Set to false to launch RViz2 alongside Gazebo',
         ),
         DeclareLaunchArgument(
             'headless',

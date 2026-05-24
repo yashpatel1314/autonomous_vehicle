@@ -50,7 +50,7 @@ services:
       # Force Qt to use the X11/XCB platform plugin — without this Qt does not
       # connect to the X11 display at all in Docker + WSLg environments
       QT_QPA_PLATFORM: xcb
-      # Required for Ogre2 to initialise under Mesa software renderer
+      # Required for Ogre to initialise under Mesa software renderer
       MESA_GL_VERSION_OVERRIDE: "3.3"
       MESA_GLSL_VERSION_OVERRIDE: "330"
     volumes:
