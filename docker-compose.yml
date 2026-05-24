@@ -2,13 +2,16 @@
 # av_sim docker-compose
 #
 # Services
-#   sim          — full simulation with RViz2 (requires X11 display)
-#   sim-headless — simulation without any GUI (works everywhere)
+#   sim          — Gazebo simulation (no RViz2 by default)
+#   sim-headless — Gazebo physics only, no GUI at all (works everywhere)
 #   test         — run the 85-test pytest suite and print results
 #
 # Quick start (Linux / WSL2 with WSLg)
 #   xhost +local:docker            # allow the container to use your display
 #   docker compose up sim
+#
+# With RViz2 (requires X11)
+#   docker compose run --rm sim ros2 launch av_sim sim.launch.py no_rviz:=false
 #
 # Headless (CI / server / macOS)
 #   docker compose up sim-headless
@@ -36,7 +39,7 @@ x-common: &common
 
 services:
 
-  # ── Full simulation with RViz2 ──────────────────────────────────────────────
+  # ── Gazebo simulation (Gazebo GUI only, no RViz2) ────────────────────────────
   # Requires an X11-capable display (Linux native, WSL2 with WSLg, or XQuartz
   # on macOS — see README for setup instructions).
   sim:

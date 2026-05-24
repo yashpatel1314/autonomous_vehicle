@@ -367,8 +367,8 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'no_rviz',
-            default_value='false',
-            description='Set to true to skip launching RViz2',
+            default_value='true',
+            description='Set to false to launch RViz2 alongside Gazebo',
         ),
         OpaqueFunction(function=lambda ctx: _setup(ctx, pkg_share)),
     ])

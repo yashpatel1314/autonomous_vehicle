@@ -262,7 +262,7 @@ The simulation starts, Gazebo opens, and the robot begins driving autonomously w
 |---|---|---|
 | `obstacles_csv` | `<pkg>/config/obstacles.csv` | Absolute path to obstacles CSV |
 | `checkpoints_csv` | `<pkg>/config/checkpoints.csv` | Absolute path to checkpoints CSV |
-| `no_rviz` | `false` | Set to `true` to skip RViz2 (headless / CI) |
+| `no_rviz` | `true` | Set to `false` to launch RViz2 alongside Gazebo |
 
 ### Examples
 
