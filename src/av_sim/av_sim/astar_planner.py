@@ -42,6 +42,7 @@ class AstarPlanner(Node):
         self._robot_y: float = 0.5
         self._robot_yaw: float = 0.0
         self._last_path: list = []     # [(wx, wy), ...]
+        self._map_received: bool = False
 
         self.create_subscription(OccupancyGrid, '/map/obstacles',      self._on_map,       _LATCHED)
         self.create_subscription(PoseArray,     '/checkpoints',        self._on_checkpoints, _LATCHED)
@@ -61,6 +62,7 @@ class AstarPlanner(Node):
         for i, v in enumerate(msg.data):
             if v == 100:
                 self._static_obs.add((i % w, i // w))
+        self._map_received = True
         self._replan()
 
     def _on_checkpoints(self, msg):
@@ -77,12 +79,13 @@ class AstarPlanner(Node):
         self._robot_yaw = math.atan2(siny, cosy)
 
     def _on_scan(self, msg):
+        rx, ry, ryaw = self._robot_x, self._robot_y, self._robot_yaw
         new_obs: set = set()
         angle = msg.angle_min
         for r in msg.ranges:
             if msg.range_min < r < msg.range_max:
-                wx = self._robot_x + r * math.cos(self._robot_yaw + angle)
-                wy = self._robot_y + r * math.sin(self._robot_yaw + angle)
+                wx = rx + r * math.cos(ryaw + angle)
+                wy = ry + r * math.sin(ryaw + angle)
                 gx, gy = world_to_cell(wx, wy, self._cs)
                 if in_bounds(gx, gy, self._gw, self._gh):
                     new_obs.add((gx, gy))
@@ -94,7 +97,9 @@ class AstarPlanner(Node):
             self._replan()
 
     def _on_cp_reached(self, msg):
-        self._cp_idx = msg.data + 1
+        if msg.data != self._cp_idx:
+            return
+        self._cp_idx += 1
         if self._cp_idx < len(self._checkpoints):
             self._replan()
         else:
@@ -112,6 +117,8 @@ class AstarPlanner(Node):
         return False
 
     def _replan(self):
+        if not self._map_received:
+            return
         if not self._checkpoints or self._cp_idx >= len(self._checkpoints):
             return
 
@@ -120,6 +127,7 @@ class AstarPlanner(Node):
 
         inf_msg = OccupancyGrid()
         inf_msg.header.frame_id = 'map'
+        inf_msg.header.stamp = self.get_clock().now().to_msg()
         inf_msg.info.resolution = self._cs
         inf_msg.info.width  = self._gw
         inf_msg.info.height = self._gh
@@ -139,7 +147,7 @@ class AstarPlanner(Node):
         if cells is None:
             cells = astar((sx, sy), (gx, gy), all_obs, self._gw, self._gh)
         if cells is None:
-            self.get_logger().warn(f'No path from ({sx},{sy}) to ({gx},{gy})')
+            self.get_logger().warning(f'No path from ({sx},{sy}) to ({gx},{gy})')
             return
 
         cells = prune_path(cells)
