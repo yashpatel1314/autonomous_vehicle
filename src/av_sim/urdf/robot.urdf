@@ -1,16 +1,13 @@
 <?xml version="1.0"?>
 <robot name="diff_drive_robot">
 
-  <!-- ============================================================
-       Body dimensions:  0.50 m (L) x 0.30 m (W) x 0.15 m (H)
-       Drive wheels:     radius 0.10 m, width 0.05 m
-       Caster:           radius 0.05 m (rear)
-       base_link origin: centre of body box, 0.175 m above ground
-         (wheel_radius 0.10 + wheel_to_body_offset 0.075)
-       Wheel separation: 0.35 m (centre-to-centre)
-  ============================================================ -->
+  <!--
+    Body:  0.50 m (L) x 0.30 m (W) x 0.15 m (H)
+    Wheels: radius 0.10 m, separation 0.35 m centre-to-centre
+    Caster: sphere radius 0.05 m (rear)
+    base_link origin: centre of body, 0.175 m above ground
+  -->
 
-  <!-- BASE LINK -->
   <link name="base_link">
     <visual>
       <geometry><box size="0.5 0.3 0.15"/></geometry>
@@ -21,14 +18,12 @@
     </collision>
     <inertial>
       <mass value="10.0"/>
-      <!-- solid box: Ixx=m/12*(h²+d²), Iyy=m/12*(w²+d²), Izz=m/12*(w²+h²) -->
       <inertia ixx="0.0875" ixy="0.0" ixz="0.0"
                iyy="0.2292" iyz="0.0"
                izz="0.2917"/>
     </inertial>
   </link>
 
-  <!-- LEFT WHEEL -->
   <link name="left_wheel">
     <visual>
       <geometry><cylinder length="0.05" radius="0.1"/></geometry>
@@ -48,12 +43,10 @@
   <joint name="left_wheel_joint" type="continuous">
     <parent link="base_link"/>
     <child link="left_wheel"/>
-    <!-- y=+0.175: half wheel-sep; z=-0.075: wheel centre below body centre -->
     <origin xyz="0.0 0.175 -0.075" rpy="-1.5708 0.0 0.0"/>
     <axis xyz="0 0 1"/>
   </joint>
 
-  <!-- RIGHT WHEEL -->
   <link name="right_wheel">
     <visual>
       <geometry><cylinder length="0.05" radius="0.1"/></geometry>
@@ -77,7 +70,6 @@
     <axis xyz="0 0 1"/>
   </joint>
 
-  <!-- REAR CASTER -->
   <link name="caster_wheel">
     <visual>
       <geometry><sphere radius="0.05"/></geometry>
@@ -97,37 +89,10 @@
   <joint name="caster_joint" type="fixed">
     <parent link="base_link"/>
     <child link="caster_wheel"/>
-    <!-- rear of body, bottom of body: x=-0.20, z=-0.125 → ground at 0.05 = sphere radius -->
     <origin xyz="-0.20 0.0 -0.125" rpy="0 0 0"/>
   </joint>
 
-  <!-- LIDAR LINK -->
-  <link name="laser_link">
-    <visual>
-      <geometry><cylinder length="0.04" radius="0.04"/></geometry>
-      <material name="black"><color rgba="0.1 0.1 0.1 1.0"/></material>
-    </visual>
-    <collision>
-      <geometry><cylinder length="0.04" radius="0.04"/></geometry>
-    </collision>
-    <inertial>
-      <mass value="0.1"/>
-      <inertia ixx="0.000021" ixy="0.0" ixz="0.0"
-               iyy="0.000021" iyz="0.0"
-               izz="0.000008"/>
-    </inertial>
-  </link>
-
-  <!-- Mounted on the front-top of the body -->
-  <joint name="laser_joint" type="fixed">
-    <parent link="base_link"/>
-    <child link="laser_link"/>
-    <origin xyz="0.20 0.0 0.10" rpy="0 0 0"/>
-  </joint>
-
-  <!-- ============================================================
-       Gazebo Fortress (Ignition Gazebo 6) plugins
-  ============================================================ -->
+  <!-- Gazebo Fortress plugins -->
   <gazebo>
     <plugin filename="ignition-gazebo-diff-drive-system"
             name="ignition::gazebo::systems::DiffDrive">
@@ -136,7 +101,6 @@
       <wheel_separation>0.35</wheel_separation>
       <wheel_radius>0.1</wheel_radius>
       <odom_publish_frequency>50</odom_publish_frequency>
-      <!-- These topic names are bridged to ROS2 in sim.launch.py -->
       <topic>cmd_vel</topic>
       <odom_topic>odom</odom_topic>
       <frame_id>odom</frame_id>
@@ -160,37 +124,6 @@
   <gazebo reference="caster_wheel">
     <mu1>0.0</mu1>
     <mu2>0.0</mu2>
-  </gazebo>
-
-  <!-- 2D lidar sensor (360° at 10 Hz, 0.1–12 m range) -->
-  <gazebo reference="laser_link">
-    <sensor name="lidar" type="gpu_lidar">
-      <ignition_frame_id>laser_link</ignition_frame_id>
-      <topic>/scan</topic>
-      <update_rate>10</update_rate>
-      <lidar>
-        <scan>
-          <horizontal>
-            <samples>360</samples>
-            <resolution>1</resolution>
-            <min_angle>-3.14159265</min_angle>
-            <max_angle>3.14159265</max_angle>
-          </horizontal>
-        </scan>
-        <range>
-          <min>0.1</min>
-          <max>12.0</max>
-          <resolution>0.01</resolution>
-        </range>
-        <noise>
-          <type>gaussian</type>
-          <mean>0.0</mean>
-          <stddev>0.01</stddev>
-        </noise>
-      </lidar>
-      <always_on>true</always_on>
-      <visualize>false</visualize>
-    </sensor>
   </gazebo>
 
 </robot>
