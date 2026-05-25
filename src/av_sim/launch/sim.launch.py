@@ -21,8 +21,8 @@ Rendering is stable under Mesa software renderer because:
 Launch args:
   obstacles_csv   — default: package config/obstacles.csv
   checkpoints_csv — default: package config/checkpoints.csv
-  no_rviz         — default true  (set false to open RViz2)
-  headless        — default false (set true for server-only Gazebo, no display)
+  headless        — default true  (Gazebo server-only, no GUI window)
+  no_rviz         — default false (RViz2 is the primary visualization)
 """
 
 import csv
@@ -319,13 +319,13 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'no_rviz',
-            default_value='true',
-            description='Set false to launch RViz2',
+            default_value='false',
+            description='Set true to suppress RViz2 (CI / headless-only runs)',
         ),
         DeclareLaunchArgument(
             'headless',
-            default_value='false',
-            description='Server-only Gazebo (no GUI window)',
+            default_value='true',
+            description='Run Gazebo server-only (no GUI window) — default on',
         ),
         OpaqueFunction(function=lambda ctx: _setup(ctx, pkg_share)),
     ])

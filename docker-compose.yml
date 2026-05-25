@@ -1,87 +1,65 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # av_sim docker-compose
 #
-# Services
-#   sim          — Gazebo simulation with GUI (WSL2 + WSLg on Windows)
-#   sim-headless — Gazebo physics only, no GUI (works everywhere)
-#   test         — run the 85-test pytest suite and print results
+# Services:
+#   sim          — Gazebo physics (headless) + RViz2 visualization  ← USE THIS
+#   sim-headless — Gazebo physics only, no display  (CI / cloud / no monitor)
+#   test         — Run the pytest suite
 #
-# Quick start (Windows WSL2 — run from Ubuntu WSL2 terminal)
+# Quick start (Windows WSL2 — run from your Ubuntu WSL2 terminal):
 #   docker compose up sim
-#   Gazebo opens as a native window via WSLg automatically.
 #
-# Headless (CI / server / macOS / Windows without WSLg)
+#   Gazebo runs headless (server only) — no flickering GUI.
+#   RViz2 opens as a native window via WSLg and shows the maze, robot, and path.
+#
+# CI / headless:
 #   docker compose up sim-headless
-#
-# Custom map
-#   docker compose run --rm sim-headless \
-#     ros2 launch av_sim sim.launch.py \
-#       obstacles_csv:=/maps/obstacles.csv \
-#       checkpoints_csv:=/maps/checkpoints.csv
 # ──────────────────────────────────────────────────────────────────────────────
 
 x-common: &common
   build: .
   image: av_sim:latest
-  # host networking gives ROS2 DDS the multicast it needs
   network_mode: host
-  # software renderer fallback — override with LIBGL_ALWAYS_SOFTWARE=0 if
-  # you have a GPU and want hardware acceleration
-  environment: &common-env
-    DISPLAY: ${DISPLAY:-:0}
-    QT_X11_NO_MITSHM: "1"
-    LIBGL_ALWAYS_SOFTWARE: ${LIBGL_ALWAYS_SOFTWARE:-1}
-    IGN_IP: "127.0.0.1"
+
+x-display-env: &display-env
+  DISPLAY: ${DISPLAY:-:0}
+  QT_X11_NO_MITSHM: "1"
+  QT_QPA_PLATFORM: xcb
+  LIBGL_ALWAYS_SOFTWARE: "1"
+  MESA_GL_VERSION_OVERRIDE: "3.3"
+  MESA_GLSL_VERSION_OVERRIDE: "330"
+  XDG_RUNTIME_DIR: /tmp/runtime
 
 services:
 
-  # ── Gazebo simulation with GUI ───────────────────────────────────────────────
-  # Uses WSLg X11 socket path (/mnt/wslg/.X11-unix) which is accessible to
-  # Docker containers on Windows WSL2, unlike /tmp/.X11-unix which is only
-  # in the docker-desktop distro and not the Ubuntu WSL2 distro.
+  # ── Primary service: headless Gazebo + RViz2 ─────────────────────────────
+  # Gazebo runs as a physics server (no GUI window = no Mesa rendering issues).
+  # RViz2 is the visualization: shows the maze, robot, planned path, and
+  # checkpoint markers in a stable top-down 2D view.
   sim:
     <<: *common
     environment:
-      <<: *common-env
-      DISPLAY: ${DISPLAY:-:0}
-      # Root-owned runtime dir so Ignition GUI IPC socket can be created
-      XDG_RUNTIME_DIR: /tmp/runtime
-      LIBGL_ALWAYS_SOFTWARE: ${LIBGL_ALWAYS_SOFTWARE:-1}
-      # Force Qt to use the X11/XCB platform plugin — without this Qt does not
-      # connect to the X11 display at all in Docker + WSLg environments
-      QT_QPA_PLATFORM: xcb
-      # Required for Ogre to initialise under Mesa software renderer
-      MESA_GL_VERSION_OVERRIDE: "3.3"
-      MESA_GLSL_VERSION_OVERRIDE: "330"
-      # Prevents Qt Scene Graph from spinning an uncapped render loop that
-      # hammers X11 and causes flickering under the software renderer
-      QSG_RENDER_LOOP: basic
+      <<: *display-env
     volumes:
-      # WSLg X11 socket — accessible to Docker containers on Windows WSL2
       - /mnt/wslg/.X11-unix:/tmp/.X11-unix:rw
-      # Optional: mount a local maps directory so you can hot-swap CSV files
-      # - ./my_maps:/maps:ro
-    # Optional GPU passthrough (uncomment on Linux with a discrete GPU)
-    # devices:
-    #   - /dev/dri:/dev/dri
-    # Create XDG_RUNTIME_DIR owned by root before launching
-    command: bash -c "mkdir -p /tmp/runtime && chmod 700 /tmp/runtime && ros2 launch av_sim sim.launch.py"
+    command: >
+      bash -c "
+        mkdir -p /tmp/runtime && chmod 700 /tmp/runtime &&
+        ros2 launch av_sim sim.launch.py
+      "
 
-  # ── Headless simulation (no GUI) ────────────────────────────────────────────
-  # Works on any host — CI, cloud VMs, macOS Docker Desktop, Windows WSL2.
-  # Gazebo still runs physics + sensors; only the Gazebo GUI and RViz2 are off.
+  # ── CI / no-display: physics only, no visualization ───────────────────────
   sim-headless:
     <<: *common
     environment:
-      <<: *common-env
       LIBGL_ALWAYS_SOFTWARE: "1"
-    command: ros2 launch av_sim sim.launch.py headless:=true
+    command: ros2 launch av_sim sim.launch.py no_rviz:=true
 
-  # ── Test suite ──────────────────────────────────────────────────────────────
+  # ── Test suite ─────────────────────────────────────────────────────────────
   test:
     <<: *common
     environment:
-      <<: *common-env
+      LIBGL_ALWAYS_SOFTWARE: "1"
     command: >
       bash -c "
         source /opt/ros/humble/setup.bash &&
