@@ -12,7 +12,7 @@
     </collision>
     <inertial>
       <mass value="5.0"/>
-      <inertia ixx="0.035" ixy="0" ixz="0" iyy="0.068" iyz="0" izz="0.1"/>
+      <inertia ixx="0.0417" ixy="0" ixz="0" iyy="0.0708" iyz="0" izz="0.1042"/>
     </inertial>
   </link>
 
@@ -62,7 +62,7 @@
   <joint name="caster_joint" type="fixed">
     <parent link="base_link"/>
     <child link="caster_link"/>
-    <origin xyz="-0.15 0 -0.07" rpy="0 0 0"/>
+    <origin xyz="-0.15 0 -0.085" rpy="0 0 0"/>
   </joint>
   <link name="caster_link">
     <visual>
