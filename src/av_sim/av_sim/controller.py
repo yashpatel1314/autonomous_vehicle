@@ -1,49 +1,17 @@
-#!/usr/bin/env python3
-"""Robot Controller node.
-
-Follows a nav_msgs/Path using Pure Pursuit steering.
-
-Safety / recovery:
-  Stuck detection — no movement > MIN_MOVE_M in STUCK_TIMEOUT s →
-      publish Empty on /replan_request and reset waypoint index.
-
-TF:
-  Broadcasts odom→base_link from every /odom message.
-
-Milestone events:
-  /current_checkpoint  std_msgs/Int32  (count of checkpoints reached so far)
-  /mission_complete    std_msgs/Bool   (True once all checkpoints reached)
-
-Visualization:
-  /checkpoint_markers  visualization_msgs/MarkerArray  (green → grey spheres)
-  /lookahead_marker    visualization_msgs/Marker       (orange lookahead sphere)
-
-Topics subscribed:
-  /planned_path    nav_msgs/Path
-  /odom            nav_msgs/Odometry
-  /map/checkpoints geometry_msgs/PoseArray
-
-Topics published:
-  /cmd_vel             geometry_msgs/Twist
-  /current_checkpoint  std_msgs/Int32
-  /mission_complete    std_msgs/Bool
-  /replan_request      std_msgs/Empty
-  /checkpoint_markers  visualization_msgs/MarkerArray
-  /lookahead_marker    visualization_msgs/Marker
-"""
-
+"""controller — Pure Pursuit follower with external path override support."""
 import math
 
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
+from builtin_interfaces.msg import Duration
 from geometry_msgs.msg import PoseArray, TransformStamped, Twist
 from nav_msgs.msg import Odometry, Path
-from std_msgs.msg import Bool, Empty, Int32
+from std_msgs.msg import Empty, Int32
 from tf2_ros import TransformBroadcaster
-from visualization_msgs.msg import Marker, MarkerArray
+from visualization_msgs.msg import Marker
 
 from av_sim.control_math import (
-    _normalise,
     _yaw_from_quat,
     find_lookahead_point,
     pure_pursuit_cmd,
@@ -51,10 +19,16 @@ from av_sim.control_math import (
     LOOKAHEAD_DIST,
 )
 
-WAYPOINT_RADIUS    = 0.35   # m — path waypoint considered reached
-CHECKPOINT_RADIUS  = 0.75   # m — mission checkpoint considered reached
-STUCK_TIMEOUT      = 6.0    # s — declare stuck after no movement
-MIN_MOVE_M         = 0.08   # m — threshold for "has moved"
+_LATCHED = QoSProfile(
+    depth=1,
+    durability=DurabilityPolicy.TRANSIENT_LOCAL,
+    reliability=ReliabilityPolicy.RELIABLE,
+)
+
+WAYPOINT_RADIUS   = 0.35   # m — path waypoint considered reached
+CHECKPOINT_RADIUS = 0.75   # m — checkpoint detection radius
+STUCK_TIMEOUT     = 6.0    # s
+MIN_MOVE_M        = 0.08   # m
 
 
 class Controller(Node):
@@ -62,218 +36,151 @@ class Controller(Node):
     def __init__(self):
         super().__init__('controller')
 
-        self._path: list    = []
-        self._wp_idx        = 0
-        self._robot_x       = 0.0
-        self._robot_y       = 0.0
-        self._robot_yaw     = 0.0
-        self._done          = False
+        self._planned_path: list  = []   # [(x,y)]
+        self._override_path: list = []   # [(x,y)]
+        self._using_override      = False
+        self._path_idx            = 0
 
-        self._checkpoints: list        = []
-        self._next_cp_idx              = 0
-        self._mission_complete_sent    = False
+        self._robot_x   = 0.5
+        self._robot_y   = 0.5
+        self._robot_yaw = 0.0
 
-        self._last_move_x    = 0.0
-        self._last_move_y    = 0.0
-        self._last_move_time = self.get_clock().now()
+        self._checkpoints: list = []   # [(wx,wy)]
+        self._cp_idx            = 0
 
-        self._tf_broadcaster = TransformBroadcaster(self)
+        self._last_pos       = (0.5, 0.5)
+        self._last_move_time = self.get_clock().now().nanoseconds / 1e9
 
-        self.create_subscription(Path,      '/planned_path',    self._cb_path,        10)
-        self.create_subscription(Odometry,  '/odom',            self._cb_odom,        10)
-        self.create_subscription(PoseArray, '/map/checkpoints', self._cb_checkpoints, 10)
+        self._tf_br = TransformBroadcaster(self)
 
-        self._cmd_pub    = self.create_publisher(Twist,       '/cmd_vel',             10)
-        self._cp_pub     = self.create_publisher(Int32,       '/current_checkpoint',  10)
-        self._mc_pub     = self.create_publisher(Bool,        '/mission_complete',    10)
-        self._replan_pub = self.create_publisher(Empty,       '/replan_request',      10)
-        self._marker_pub = self.create_publisher(MarkerArray, '/checkpoint_markers',  10)
-        self._lh_pub     = self.create_publisher(Marker,      '/lookahead_marker',    10)
+        self.create_subscription(Path,      '/planned_path',  self._on_planned,  10)
+        self.create_subscription(Path,      '/override_path', self._on_override, 10)
+        self.create_subscription(Odometry,  '/odom',          self._on_odom,     10)
+        self.create_subscription(PoseArray, '/checkpoints',   self._on_checkpoints, _LATCHED)
 
-        self.create_timer(0.05, self._control_loop)
-        self.create_timer(1.0,  self._publish_markers)
+        self._cmd_pub    = self.create_publisher(Twist,  '/cmd_vel',             10)
+        self._marker_pub = self.create_publisher(Marker, '/lookahead_marker',    10)
+        self._cp_pub     = self.create_publisher(Int32,  '/checkpoint_reached',  10)
+        self._replan_pub = self.create_publisher(Empty,  '/replan_request',      10)
+        self._exhaust_pub = self.create_publisher(Empty, '/override_exhausted',  10)
 
-    # ── Callbacks ─────────────────────────────────────────────────────────────
+        self.create_timer(0.1, self._control_loop)
 
-    def _cb_path(self, msg: Path):
-        self._path   = [(ps.pose.position.x, ps.pose.position.y) for ps in msg.poses]
-        self._wp_idx = 0
-        self._done   = False
-        self.get_logger().info(f'New path: {len(self._path)} waypoints')
+    # ── callbacks ──────────────────────────────────────────────────────────────
 
-    def _cb_odom(self, msg: Odometry):
-        self._robot_x   = msg.pose.pose.position.x
-        self._robot_y   = msg.pose.pose.position.y
-        self._robot_yaw = _yaw_from_quat(msg.pose.pose.orientation)
+    def _on_planned(self, msg):
+        self._planned_path = [(p.pose.position.x, p.pose.position.y) for p in msg.poses]
+        if not self._using_override:
+            self._path_idx = 0
+
+    def _on_override(self, msg):
+        self._override_path = [(p.pose.position.x, p.pose.position.y) for p in msg.poses]
+        self._using_override = True
+        self._path_idx = 0
+        self.get_logger().info('Switched to override path')
+
+    def _on_odom(self, msg):
+        p = msg.pose.pose
+        self._robot_x   = p.position.x
+        self._robot_y   = p.position.y
+        self._robot_yaw = _yaw_from_quat(p.orientation)
         self._broadcast_tf(msg)
 
-    def _cb_checkpoints(self, msg: PoseArray):
+    def _on_checkpoints(self, msg):
         self._checkpoints = [(p.position.x, p.position.y) for p in msg.poses]
 
-    # ── TF broadcast ──────────────────────────────────────────────────────────
-
-    def _broadcast_tf(self, odom_msg: Odometry):
-        t = TransformStamped()
-        t.header.stamp    = odom_msg.header.stamp
-        t.header.frame_id = 'odom'
-        t.child_frame_id  = 'base_link'
-        p = odom_msg.pose.pose.position
-        q = odom_msg.pose.pose.orientation
-        t.transform.translation.x = p.x
-        t.transform.translation.y = p.y
-        t.transform.translation.z = p.z
-        t.transform.rotation.x = q.x
-        t.transform.rotation.y = q.y
-        t.transform.rotation.z = q.z
-        t.transform.rotation.w = q.w
-        self._tf_broadcaster.sendTransform(t)
-
-    # ── Control helpers ────────────────────────────────────────────────────────
-
-    def _check_checkpoint_reached(self):
-        if self._next_cp_idx >= len(self._checkpoints):
-            return
-        cx, cy = self._checkpoints[self._next_cp_idx]
-        if math.hypot(cx - self._robot_x, cy - self._robot_y) <= CHECKPOINT_RADIUS:
-            reached = self._next_cp_idx + 1
-            self._cp_pub.publish(Int32(data=reached))
-            self.get_logger().info(f'Checkpoint {reached} reached')
-            self._next_cp_idx += 1
-            self._publish_markers()
-
-            if self._next_cp_idx >= len(self._checkpoints) and not self._mission_complete_sent:
-                self._mc_pub.publish(Bool(data=True))
-                self._mission_complete_sent = True
-                self.get_logger().info('Mission complete!')
-
-    def _check_stuck(self):
-        moved = math.hypot(self._robot_x - self._last_move_x,
-                           self._robot_y - self._last_move_y)
-        now = self.get_clock().now()
-        if moved >= MIN_MOVE_M:
-            self._last_move_x    = self._robot_x
-            self._last_move_y    = self._robot_y
-            self._last_move_time = now
-            return
-        elapsed = (now - self._last_move_time).nanoseconds * 1e-9
-        if elapsed > STUCK_TIMEOUT and not self._done and self._path:
-            self.get_logger().warn('Stuck — requesting replan')
-            self._replan_pub.publish(Empty())
-            self._last_move_time = now
-            self._wp_idx = 0
-
-    # ── Main control loop ─────────────────────────────────────────────────────
+    # ── control loop ──────────────────────────────────────────────────────────
 
     def _control_loop(self):
-        self._check_checkpoint_reached()
+        active = self._override_path if self._using_override else self._planned_path
+        if not active:
+            self._publish_cmd(0.0, 0.0)
+            return
+
+        self._check_checkpoints()
         self._check_stuck()
 
-        if self._done or not self._path:
+        lp, new_idx = find_lookahead_point(
+            active, self._robot_x, self._robot_y, self._path_idx, LOOKAHEAD_DIST
+        )
+        self._path_idx = new_idx
+
+        dist_to_end = math.hypot(
+            active[-1][0] - self._robot_x,
+            active[-1][1] - self._robot_y,
+        )
+
+        if self._using_override and new_idx >= len(self._override_path) - 1 and dist_to_end < 0.5:
+            self._using_override = False
+            self._path_idx = 0
+            self._exhaust_pub.publish(Empty())
+            self.get_logger().info('Override path exhausted, reverting to planned path')
             return
 
-        # Skip already-reached waypoints
-        while self._wp_idx < len(self._path):
-            tx, ty = self._path[self._wp_idx]
-            if math.hypot(tx - self._robot_x, ty - self._robot_y) > WAYPOINT_RADIUS:
-                break
-            self._wp_idx += 1
+        k   = pure_pursuit_curvature(self._robot_x, self._robot_y, self._robot_yaw, lp[0], lp[1])
+        lin, ang = pure_pursuit_cmd(dist=dist_to_end, curvature=k)
+        self._publish_cmd(lin, ang)
+        self._publish_lookahead(lp)
 
-        if self._wp_idx >= len(self._path):
-            self._stop()
-            self._done = True
-            self.get_logger().info('End of path reached — stopped.')
+    def _check_checkpoints(self):
+        if self._cp_idx >= len(self._checkpoints):
             return
+        tx, ty = self._checkpoints[self._cp_idx]
+        if math.hypot(tx - self._robot_x, ty - self._robot_y) < CHECKPOINT_RADIUS:
+            msg = Int32()
+            msg.data = self._cp_idx
+            self._cp_pub.publish(msg)
+            self.get_logger().info(f'Checkpoint {self._cp_idx} reached')
+            self._cp_idx += 1
 
-        lh_pt, _ = find_lookahead_point(
-            self._path, self._robot_x, self._robot_y,
-            self._wp_idx, LOOKAHEAD_DIST,
-        )
-        self._publish_lookahead(lh_pt)
+    def _check_stuck(self):
+        now = self.get_clock().now().nanoseconds / 1e9
+        if math.hypot(self._robot_x - self._last_pos[0],
+                      self._robot_y - self._last_pos[1]) > MIN_MOVE_M:
+            self._last_pos = (self._robot_x, self._robot_y)
+            self._last_move_time = now
+        elif now - self._last_move_time > STUCK_TIMEOUT:
+            self.get_logger().warning('Robot stuck — requesting replan')
+            self._replan_pub.publish(Empty())
+            self._last_move_time = now
 
-        kappa = pure_pursuit_curvature(
-            self._robot_x, self._robot_y, self._robot_yaw,
-            lh_pt[0], lh_pt[1],
-        )
-        dist_end = math.hypot(
-            self._path[-1][0] - self._robot_x,
-            self._path[-1][1] - self._robot_y,
-        )
-        lin, ang = pure_pursuit_cmd(dist_end, kappa)
+    # ── helpers ───────────────────────────────────────────────────────────────
 
-        cmd = Twist()
-        cmd.linear.x  = lin
-        cmd.angular.z = ang
-        self._cmd_pub.publish(cmd)
-
-    def _stop(self):
-        self._cmd_pub.publish(Twist())
-
-    # ── Visualization ─────────────────────────────────────────────────────────
+    def _publish_cmd(self, linear, angular):
+        t = Twist()
+        t.linear.x  = float(linear)
+        t.angular.z = float(angular)
+        self._cmd_pub.publish(t)
 
     def _publish_lookahead(self, pt):
         m = Marker()
         m.header.frame_id = 'map'
-        m.header.stamp    = self.get_clock().now().to_msg()
-        m.ns              = 'lookahead'
-        m.id              = 0
-        m.type            = Marker.SPHERE
-        m.action          = Marker.ADD
+        m.header.stamp = self.get_clock().now().to_msg()
+        m.type = Marker.SPHERE
+        m.action = Marker.ADD
         m.pose.position.x = pt[0]
         m.pose.position.y = pt[1]
-        m.pose.position.z = 0.15
+        m.pose.position.z = 0.2
         m.pose.orientation.w = 1.0
-        m.scale.x = m.scale.y = m.scale.z = 0.25
-        m.color.r = 1.0; m.color.g = 0.5; m.color.b = 0.0; m.color.a = 0.9
-        self._lh_pub.publish(m)
+        m.scale.x = m.scale.y = m.scale.z = 0.2
+        m.color.r, m.color.g, m.color.b, m.color.a = 1.0, 0.5, 0.0, 1.0
+        m.lifetime = Duration(sec=0, nanosec=200_000_000)
+        self._marker_pub.publish(m)
 
-    def _publish_markers(self):
-        if not self._checkpoints:
-            return
-        ma  = MarkerArray()
-        now = self.get_clock().now().to_msg()
-        for i, (cx, cy) in enumerate(self._checkpoints):
-            s = Marker()
-            s.header.frame_id = 'map'
-            s.header.stamp    = now
-            s.ns              = 'checkpoints'
-            s.id              = i
-            s.type            = Marker.SPHERE
-            s.action          = Marker.ADD
-            s.pose.position.x = cx
-            s.pose.position.y = cy
-            s.pose.position.z = 0.4
-            s.pose.orientation.w = 1.0
-            s.scale.x = s.scale.y = s.scale.z = 0.4
-            if i < self._next_cp_idx:
-                s.color.r = s.color.g = s.color.b = 0.5; s.color.a = 0.7
-            else:
-                s.color.r = 0.1; s.color.g = 0.9; s.color.b = 0.1; s.color.a = 0.9
-            ma.markers.append(s)
-
-            lbl = Marker()
-            lbl.header        = s.header
-            lbl.ns            = 'checkpoint_labels'
-            lbl.id            = i
-            lbl.type          = Marker.TEXT_VIEW_FACING
-            lbl.action        = Marker.ADD
-            lbl.pose.position.x = cx
-            lbl.pose.position.y = cy
-            lbl.pose.position.z = 0.8
-            lbl.pose.orientation.w = 1.0
-            lbl.scale.z = 0.35
-            lbl.color.r = lbl.color.g = lbl.color.b = lbl.color.a = 1.0
-            lbl.text = str(i + 1)
-            ma.markers.append(lbl)
-
-        self._marker_pub.publish(ma)
+    def _broadcast_tf(self, odom_msg):
+        t = TransformStamped()
+        t.header = odom_msg.header
+        t.header.frame_id = 'odom'
+        t.child_frame_id  = 'base_link'
+        t.transform.translation.x = odom_msg.pose.pose.position.x
+        t.transform.translation.y = odom_msg.pose.pose.position.y
+        t.transform.translation.z = odom_msg.pose.pose.position.z
+        t.transform.rotation      = odom_msg.pose.pose.orientation
+        self._tf_br.sendTransform(t)
 
 
-def main(args=None):
-    rclpy.init(args=args)
+def main():
+    rclpy.init()
     node = Controller()
     rclpy.spin(node)
     rclpy.shutdown()
-
-
-if __name__ == '__main__':
-    main()
