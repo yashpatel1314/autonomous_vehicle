@@ -208,7 +208,7 @@ def _setup(context, pkg_share, gazebo_ros_share):
                 'grid_width':       GRID_W,
                 'grid_height':      GRID_H,
                 'cell_size':        CELL_SIZE,
-                'inflation_radius': 1.0,
+                'inflation_radius': 1,
             }],
             output='screen',
         ),
