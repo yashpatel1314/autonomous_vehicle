@@ -1,6 +1,6 @@
 """Unit tests for inflate_obstacles, prune_path (av_sim.planning)."""
 import pytest
-from av_sim.planning import inflate_obstacles, prune_path
+from av_sim.astar_math import inflate_obstacles, prune_path
 
 
 # ---------------------------------------------------------------------------

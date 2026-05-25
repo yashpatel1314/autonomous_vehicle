@@ -2,7 +2,7 @@
 import math
 import pytest
 
-from av_sim.planning import astar
+from av_sim.astar_math import astar
 
 
 # ---------------------------------------------------------------------------
