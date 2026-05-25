@@ -25,11 +25,9 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import (DeclareLaunchArgument, ExecuteProcess,
-                            IncludeLaunchDescription, OpaqueFunction, TimerAction)
-from launch.conditions import IfCondition, UnlessCondition
+from launch.actions import (DeclareLaunchArgument, IncludeLaunchDescription,
+                            OpaqueFunction, TimerAction)
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 CELL_SIZE    = 1.0
@@ -51,7 +49,7 @@ def _load_obstacles(path):
 def _load_checkpoints(path):
     with open(path, newline='') as f:
         rows = sorted(csv.DictReader(f), key=lambda r: int(r['order']))
-    return [(int(r['grid_x']), int(r['grid_y'])) for r in rows]
+        return [(int(r['grid_x']), int(r['grid_y'])) for r in rows]
 
 
 def _centre(gx, gy):
@@ -141,8 +139,11 @@ def _setup(context, pkg_share, gazebo_ros_share):
     obstacles   = _load_obstacles(obstacles_csv)
     checkpoints = _load_checkpoints(checkpoints_csv)
 
-    with open(WORLD_PATH, 'w') as f:
-        f.write(_build_world(obstacles, checkpoints))
+    try:
+        with open(WORLD_PATH, 'w') as f:
+            f.write(_build_world(obstacles, checkpoints))
+    except OSError as e:
+        raise RuntimeError(f'Cannot write SDF world to {WORLD_PATH}: {e}') from e
 
     with open(urdf_path) as f:
         robot_desc = f.read()
@@ -207,7 +208,7 @@ def _setup(context, pkg_share, gazebo_ros_share):
                 'grid_width':       GRID_W,
                 'grid_height':      GRID_H,
                 'cell_size':        CELL_SIZE,
-                'inflation_radius': 1,
+                'inflation_radius': 1.0,
             }],
             output='screen',
         ),
