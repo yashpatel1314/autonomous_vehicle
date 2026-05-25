@@ -51,3 +51,4 @@ services:
         colcon test --packages-select av_sim --event-handlers console_direct+ &&
         colcon test-result --all --verbose
       "
+
