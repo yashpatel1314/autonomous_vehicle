@@ -1,20 +1,15 @@
-# ──────────────────────────────────────────────────────────────────────────────
-# av_sim docker-compose
+# av_sim docker-compose — Gazebo Classic 11
 #
 # Services:
-#   sim          — Gazebo physics (headless) + RViz2 visualization  ← USE THIS
-#   sim-headless — Gazebo physics only, no display  (CI / cloud / no monitor)
-#   test         — Run the pytest suite
+#   sim          — Gazebo Classic GUI + all ROS nodes  (primary)
+#   sim-headless — gzserver only, no display           (CI)
+#   test         — pytest unit test suite
 #
-# Quick start (Windows WSL2 — run from your Ubuntu WSL2 terminal):
+# Quick start (WSL2 terminal):
 #   docker compose up sim
 #
-#   Gazebo runs headless (server only) — no flickering GUI.
-#   RViz2 opens as a native window via WSLg and shows the maze, robot, and path.
-#
-# CI / headless:
-#   docker compose up sim-headless
-# ──────────────────────────────────────────────────────────────────────────────
+# The Gazebo Classic GUI window opens via WSLg X11 forwarding.
+# Ogre 1.x under Mesa software rendering is stable — no flickering.
 
 x-common: &common
   build: .
@@ -24,18 +19,10 @@ x-common: &common
 x-display-env: &display-env
   DISPLAY: ${DISPLAY:-:0}
   QT_X11_NO_MITSHM: "1"
-  QT_QPA_PLATFORM: xcb
   LIBGL_ALWAYS_SOFTWARE: "1"
-  MESA_GL_VERSION_OVERRIDE: "3.3"
-  MESA_GLSL_VERSION_OVERRIDE: "330"
-  XDG_RUNTIME_DIR: /tmp/runtime
 
 services:
 
-  # ── Primary service: headless Gazebo + RViz2 ─────────────────────────────
-  # Gazebo runs as a physics server (no GUI window = no Mesa rendering issues).
-  # RViz2 is the visualization: shows the maze, robot, planned path, and
-  # checkpoint markers in a stable top-down 2D view.
   sim:
     <<: *common
     environment:
@@ -44,18 +31,15 @@ services:
       - /mnt/wslg/.X11-unix:/tmp/.X11-unix:rw
     command: >
       bash -c "
-        mkdir -p /tmp/runtime && chmod 700 /tmp/runtime &&
         ros2 launch av_sim sim.launch.py
       "
 
-  # ── CI / no-display: physics only, no visualization ───────────────────────
   sim-headless:
     <<: *common
     environment:
       LIBGL_ALWAYS_SOFTWARE: "1"
-    command: ros2 launch av_sim sim.launch.py no_rviz:=true
+    command: ros2 launch av_sim sim.launch.py headless:=true
 
-  # ── Test suite ─────────────────────────────────────────────────────────────
   test:
     <<: *common
     environment:
