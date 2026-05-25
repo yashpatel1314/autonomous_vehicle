@@ -1,28 +1,23 @@
-"""sim.launch.py — clean entry-point for the AV serpentine-maze simulation.
+"""sim.launch.py — Gazebo Classic 11 launch for AV simulation.
 
 Execution order:
   1. Parse obstacles.csv and checkpoints.csv.
-  2. Generate an SDF world and write to /tmp.
-  3. Launch Ignition Gazebo (ign CLI).
-  4. Publish URDF via robot_state_publisher.
-  5. Publish static map→odom identity TF.
-  6. Spawn robot after 3 s.
-  7. ros_ign_bridge: cmd_vel, odom, clock  (NO /scan — no GPU sensors).
-  8. Start map_manager, astar_planner, controller after 5 s.
-  9. Optionally start RViz2.
+  2. Generate SDF world file and write to /tmp.
+  3. Launch gzserver (physics) + gzclient (GUI, unless headless:=true).
+  4. robot_state_publisher — publishes /robot_description and /tf topic.
+  5. static_transform_publisher — map → odom identity TF.
+  6. spawn_entity.py after 3 s — drops robot into Gazebo.
+  7. map_manager, astar_planner, controller after 5 s.
 
-Rendering is stable under Mesa software renderer because:
-  - No ignition-gazebo-sensors-system plugin  →  no GPU off-screen render context
-  - cast_shadows false                        →  no shadow-map recomputation
-  - max_step_size 0.004 (250 Hz)             →  lower scene-update pressure
-  - render_rate 60                            →  capped Ogre GUI frame rate
-  - engine ogre                               →  Ogre1 works with Mesa; Ogre2 needs GL 3.3
+Gazebo Classic rendering is stable under Mesa software rendering because:
+  - Uses Ogre 1.x (not Ogre 2), which does not require GL 3.3 deferred shading
+  - No GzSceneManager / SceneBroadcaster interaction (Ignition-only)
+  - CPU ray sensor — no off-screen GPU framebuffer
 
 Launch args:
   obstacles_csv   — default: package config/obstacles.csv
   checkpoints_csv — default: package config/checkpoints.csv
-  headless        — default true  (Gazebo server-only, no GUI window)
-  no_rviz         — default false (RViz2 is the primary visualization)
+  headless        — default false  (set true for CI / no display)
 """
 
 import csv
@@ -31,58 +26,57 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (DeclareLaunchArgument, ExecuteProcess,
-                             OpaqueFunction, TimerAction)
-from launch.conditions import UnlessCondition
+                            IncludeLaunchDescription, OpaqueFunction, TimerAction)
+from launch.conditions import IfCondition, UnlessCondition
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
-# ── Grid constants ────────────────────────────────────────────────────────────
-CELL_SIZE = 1.0
-GRID_W    = 20
-GRID_H    = 20
-
-ROBOT_SPAWN_X = 0.5
-ROBOT_SPAWN_Y = 0.5
-ROBOT_SPAWN_Z = 0.175
-
-WORLD_TMP_PATH = '/tmp/av_sim_world.sdf'
+CELL_SIZE    = 1.0
+GRID_W       = 30
+GRID_H       = 30
+SPAWN_X      = 0.5
+SPAWN_Y      = 0.5
+SPAWN_Z      = 0.175
+WORLD_PATH   = '/tmp/av_sim_world.sdf'
 
 
 # ── CSV helpers ───────────────────────────────────────────────────────────────
 
-def _load_obstacles(path: str):
+def _load_obstacles(path):
     with open(path, newline='') as f:
         return [(int(r['grid_x']), int(r['grid_y'])) for r in csv.DictReader(f)]
 
 
-def _load_checkpoints(path: str):
+def _load_checkpoints(path):
     with open(path, newline='') as f:
         rows = sorted(csv.DictReader(f), key=lambda r: int(r['order']))
     return [(int(r['grid_x']), int(r['grid_y'])) for r in rows]
 
 
-def _cell_centre(gx, gy):
+def _centre(gx, gy):
     return (gx + 0.5) * CELL_SIZE, (gy + 0.5) * CELL_SIZE
 
 
-# ── SDF snippets ──────────────────────────────────────────────────────────────
+# ── SDF builders ─────────────────────────────────────────────────────────────
 
-def _wall_sdf(gx, gy):
-    x, y = _cell_centre(gx, gy)
-    sz = CELL_SIZE * 0.70
+def _obstacle_sdf(gx, gy):
+    x, y = _centre(gx, gy)
     return f"""\
-    <model name="wall_{gx}_{gy}">
+    <model name="obs_{gx}_{gy}">
       <static>true</static>
       <pose>{x} {y} 0.5 0 0 0</pose>
       <link name="link">
         <collision name="col">
-          <geometry><box><size>{sz} {sz} 1.0</size></box></geometry>
+          <geometry><box><size>0.8 0.8 1.0</size></box></geometry>
         </collision>
         <visual name="vis">
-          <geometry><box><size>{sz} {sz} 1.0</size></box></geometry>
+          <geometry><box><size>0.8 0.8 1.0</size></box></geometry>
           <material>
-            <ambient>0.7 0.15 0.15 1</ambient>
-            <diffuse>0.7 0.15 0.15 1</diffuse>
+            <script>
+              <uri>file://media/materials/scripts/gazebo.material</uri>
+              <name>Gazebo/Red</name>
+            </script>
           </material>
         </visual>
       </link>
@@ -90,103 +84,41 @@ def _wall_sdf(gx, gy):
 
 
 def _checkpoint_sdf(order, gx, gy):
-    x, y = _cell_centre(gx, gy)
+    x, y = _centre(gx, gy)
     return f"""\
-    <model name="checkpoint_{order}">
+    <model name="cp_{order}">
       <static>true</static>
       <pose>{x} {y} 0.1 0 0 0</pose>
       <link name="link">
         <visual name="vis">
           <geometry><cylinder><radius>0.3</radius><length>0.2</length></cylinder></geometry>
           <material>
-            <ambient>0.1 0.8 0.1 1</ambient>
-            <diffuse>0.1 0.8 0.1 1</diffuse>
+            <script>
+              <uri>file://media/materials/scripts/gazebo.material</uri>
+              <name>Gazebo/Green</name>
+            </script>
           </material>
         </visual>
       </link>
     </model>"""
 
 
-def _build_world_sdf(obstacles, checkpoints) -> str:
-    walls = '\n'.join(_wall_sdf(gx, gy) for gx, gy in obstacles)
+def _build_world(obstacles, checkpoints):
+    walls = '\n'.join(_obstacle_sdf(gx, gy) for gx, gy in obstacles)
     cps   = '\n'.join(_checkpoint_sdf(i + 1, gx, gy)
                       for i, (gx, gy) in enumerate(checkpoints))
     return f"""\
 <?xml version="1.0"?>
-<sdf version="1.7">
+<sdf version="1.6">
   <world name="av_sim">
 
-    <physics name="250hz" type="ignored">
-      <max_step_size>0.004</max_step_size>
-      <real_time_factor>1.0</real_time_factor>
+    <physics type="ode">
+      <max_step_size>0.002</max_step_size>
+      <real_time_update_rate>500</real_time_update_rate>
     </physics>
 
-    <plugin filename="ignition-gazebo-physics-system"
-            name="ignition::gazebo::systems::Physics"/>
-    <plugin filename="ignition-gazebo-user-commands-system"
-            name="ignition::gazebo::systems::UserCommands"/>
-    <plugin filename="ignition-gazebo-scene-broadcaster-system"
-            name="ignition::gazebo::systems::SceneBroadcaster"/>
-
-    <gui fullscreen="0">
-      <plugin filename="MinimalScene" name="3D View">
-        <ignition-gui>
-          <title>3D View</title>
-          <property type="bool" key="showTitleBar">false</property>
-          <property type="bool" key="resizable">false</property>
-          <property type="double" key="z">0</property>
-          <property type="string" key="state">docked</property>
-        </ignition-gui>
-        <engine>ogre</engine>
-        <scene>scene</scene>
-        <ambient_light>0.5 0.5 0.5</ambient_light>
-        <background_color>0.2 0.2 0.3</background_color>
-        <camera_pose>10 -4 28 0 0.75 1.5708</camera_pose>
-        <render_rate>60</render_rate>
-      </plugin>
-      <plugin filename="GzSceneManager" name="Scene Manager">
-        <ignition-gui>
-          <property key="resizable" type="bool">false</property>
-          <property key="width"     type="double">5</property>
-          <property key="height"    type="double">5</property>
-          <property key="state"     type="string">floating</property>
-          <property key="showTitleBar" type="bool">false</property>
-        </ignition-gui>
-      </plugin>
-      <plugin filename="InteractiveViewControl" name="Interactive view control">
-        <ignition-gui>
-          <property key="resizable" type="bool">false</property>
-          <property key="width"     type="double">5</property>
-          <property key="height"    type="double">5</property>
-          <property key="state"     type="string">floating</property>
-          <property key="showTitleBar" type="bool">false</property>
-        </ignition-gui>
-      </plugin>
-    </gui>
-
-    <light type="directional" name="sun">
-      <cast_shadows>false</cast_shadows>
-      <pose>0 0 10 0 0 0</pose>
-      <diffuse>0.9 0.9 0.9 1</diffuse>
-      <specular>0.2 0.2 0.2 1</specular>
-      <direction>-0.5 0.1 -0.9</direction>
-    </light>
-
-    <model name="ground_plane">
-      <static>true</static>
-      <link name="link">
-        <collision name="col">
-          <geometry><plane><normal>0 0 1</normal><size>100 100</size></plane></geometry>
-        </collision>
-        <visual name="vis">
-          <geometry><plane><normal>0 0 1</normal><size>100 100</size></plane></geometry>
-          <material>
-            <ambient>0.6 0.6 0.6 1</ambient>
-            <diffuse>0.6 0.6 0.6 1</diffuse>
-          </material>
-        </visual>
-      </link>
-    </model>
+    <include><uri>model://sun</uri></include>
+    <include><uri>model://ground_plane</uri></include>
 
 {walls}
 
@@ -199,26 +131,32 @@ def _build_world_sdf(obstacles, checkpoints) -> str:
 
 # ── Launch ────────────────────────────────────────────────────────────────────
 
-def _setup(context, pkg_share):
+def _setup(context, pkg_share, gazebo_ros_share):
     obstacles_csv   = context.launch_configurations['obstacles_csv']
     checkpoints_csv = context.launch_configurations['checkpoints_csv']
     headless = context.launch_configurations.get('headless', 'false').lower() == 'true'
 
     urdf_path = os.path.join(pkg_share, 'urdf', 'robot.urdf')
-    rviz_cfg  = os.path.join(pkg_share, 'rviz', 'av_sim.rviz')
 
     obstacles   = _load_obstacles(obstacles_csv)
     checkpoints = _load_checkpoints(checkpoints_csv)
 
-    with open(WORLD_TMP_PATH, 'w') as f:
-        f.write(_build_world_sdf(obstacles, checkpoints))
+    with open(WORLD_PATH, 'w') as f:
+        f.write(_build_world(obstacles, checkpoints))
 
     with open(urdf_path) as f:
         robot_desc = f.read()
 
-    gz_cmd = ['ign', 'gazebo', '-s', WORLD_TMP_PATH, '-r'] if headless \
-             else ['ign', 'gazebo', WORLD_TMP_PATH, '-r']
-    gz = ExecuteProcess(cmd=gz_cmd, output='screen')
+    gazebo = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(gazebo_ros_share, 'launch', 'gazebo.launch.py')
+        ),
+        launch_arguments={
+            'world':   WORLD_PATH,
+            'verbose': 'false',
+            'gui':     'false' if headless else 'true',
+        }.items(),
+    )
 
     rsp = Node(
         package='robot_state_publisher',
@@ -236,31 +174,18 @@ def _setup(context, pkg_share):
 
     spawn = TimerAction(period=3.0, actions=[
         Node(
-            package='ros_ign_gazebo',
-            executable='create',
+            package='gazebo_ros',
+            executable='spawn_entity.py',
             arguments=[
-                '-name', 'robot',
-                '-file', urdf_path,
-                '-x', str(ROBOT_SPAWN_X),
-                '-y', str(ROBOT_SPAWN_Y),
-                '-z', str(ROBOT_SPAWN_Z),
-                '-R', '0', '-P', '0', '-Y', '0',
+                '-entity', 'robot',
+                '-file',   urdf_path,
+                '-x', str(SPAWN_X),
+                '-y', str(SPAWN_Y),
+                '-z', str(SPAWN_Z),
             ],
             output='screen',
         )
     ])
-
-    # No /scan bridge — no GPU sensor off-screen rendering
-    bridge = Node(
-        package='ros_ign_bridge',
-        executable='parameter_bridge',
-        arguments=[
-            '/cmd_vel@geometry_msgs/msg/Twist]ignition.msgs.Twist',
-            '/odom@nav_msgs/msg/Odometry[ignition.msgs.Odometry',
-            '/clock@rosgraph_msgs/msg/Clock[ignition.msgs.Clock',
-        ],
-        output='screen',
-    )
 
     app = TimerAction(period=5.0, actions=[
         Node(
@@ -270,6 +195,8 @@ def _setup(context, pkg_share):
                 'obstacles_csv':   obstacles_csv,
                 'checkpoints_csv': checkpoints_csv,
                 'cell_size':       CELL_SIZE,
+                'grid_width':      GRID_W,
+                'grid_height':     GRID_H,
             }],
             output='screen',
         ),
@@ -291,41 +218,29 @@ def _setup(context, pkg_share):
         ),
     ])
 
-    rviz = Node(
-        package='rviz2',
-        executable='rviz2',
-        arguments=['-d', rviz_cfg],
-        output='screen',
-        condition=UnlessCondition(LaunchConfiguration('no_rviz')),
-    )
-
-    return [gz, rsp, static_tf, spawn, bridge, app, rviz]
+    return [gazebo, rsp, static_tf, spawn, app]
 
 
 def generate_launch_description():
-    pkg_share  = get_package_share_directory('av_sim')
-    config_dir = os.path.join(pkg_share, 'config')
+    pkg_share        = get_package_share_directory('av_sim')
+    gazebo_ros_share = get_package_share_directory('gazebo_ros')
+    config_dir       = os.path.join(pkg_share, 'config')
 
     return LaunchDescription([
         DeclareLaunchArgument(
             'obstacles_csv',
             default_value=os.path.join(config_dir, 'obstacles.csv'),
-            description='Path to obstacles CSV',
         ),
         DeclareLaunchArgument(
             'checkpoints_csv',
             default_value=os.path.join(config_dir, 'checkpoints.csv'),
-            description='Path to checkpoints CSV',
-        ),
-        DeclareLaunchArgument(
-            'no_rviz',
-            default_value='false',
-            description='Set true to suppress RViz2 (CI / headless-only runs)',
         ),
         DeclareLaunchArgument(
             'headless',
-            default_value='true',
-            description='Run Gazebo server-only (no GUI window) — default on',
+            default_value='false',
+            description='true = gzserver only, no GUI window',
         ),
-        OpaqueFunction(function=lambda ctx: _setup(ctx, pkg_share)),
+        OpaqueFunction(
+            function=lambda ctx: _setup(ctx, pkg_share, gazebo_ros_share)
+        ),
     ])
