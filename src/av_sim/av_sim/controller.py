@@ -39,7 +39,8 @@ class Controller(Node):
         self._planned_path: list  = []   # [(x,y)]
         self._override_path: list = []   # [(x,y)]
         self._using_override      = False
-        self._path_idx            = 0
+        self._planned_idx         = 0
+        self._override_idx        = 0
 
         self._robot_x   = 0.5
         self._robot_y   = 0.5
@@ -49,7 +50,7 @@ class Controller(Node):
         self._cp_idx            = 0
 
         self._last_pos       = (0.5, 0.5)
-        self._last_move_time = self.get_clock().now().nanoseconds / 1e9
+        self._last_move_time = self.get_clock().now()
 
         self._tf_br = TransformBroadcaster(self)
 
@@ -70,13 +71,12 @@ class Controller(Node):
 
     def _on_planned(self, msg):
         self._planned_path = [(p.pose.position.x, p.pose.position.y) for p in msg.poses]
-        if not self._using_override:
-            self._path_idx = 0
+        self._planned_idx = 0
 
     def _on_override(self, msg):
         self._override_path = [(p.pose.position.x, p.pose.position.y) for p in msg.poses]
         self._using_override = True
-        self._path_idx = 0
+        self._override_idx = 0
         self.get_logger().info('Switched to override path')
 
     def _on_odom(self, msg):
@@ -100,10 +100,14 @@ class Controller(Node):
         self._check_checkpoints()
         self._check_stuck()
 
+        cur_idx = self._override_idx if self._using_override else self._planned_idx
         lp, new_idx = find_lookahead_point(
-            active, self._robot_x, self._robot_y, self._path_idx, LOOKAHEAD_DIST
+            active, self._robot_x, self._robot_y, cur_idx, LOOKAHEAD_DIST
         )
-        self._path_idx = new_idx
+        if self._using_override:
+            self._override_idx = new_idx
+        else:
+            self._planned_idx = new_idx
 
         dist_to_end = math.hypot(
             active[-1][0] - self._robot_x,
@@ -112,7 +116,7 @@ class Controller(Node):
 
         if self._using_override and new_idx >= len(self._override_path) - 1 and dist_to_end < 0.5:
             self._using_override = False
-            self._path_idx = 0
+            self._override_idx = 0
             self._exhaust_pub.publish(Empty())
             self.get_logger().info('Override path exhausted, reverting to planned path')
             return
@@ -134,12 +138,12 @@ class Controller(Node):
             self._cp_idx += 1
 
     def _check_stuck(self):
-        now = self.get_clock().now().nanoseconds / 1e9
+        now = self.get_clock().now()
         if math.hypot(self._robot_x - self._last_pos[0],
                       self._robot_y - self._last_pos[1]) > MIN_MOVE_M:
             self._last_pos = (self._robot_x, self._robot_y)
             self._last_move_time = now
-        elif now - self._last_move_time > STUCK_TIMEOUT:
+        elif (now - self._last_move_time).nanoseconds / 1e9 > STUCK_TIMEOUT:
             self.get_logger().warning('Robot stuck — requesting replan')
             self._replan_pub.publish(Empty())
             self._last_move_time = now
