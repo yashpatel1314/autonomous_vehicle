@@ -118,6 +118,17 @@ class AstarPlanner(Node):
         all_obs  = self._static_obs | self._scan_obs
         inflated = inflate_obstacles(all_obs, self._gw, self._gh, self._inf)
 
+        inf_msg = OccupancyGrid()
+        inf_msg.header.frame_id = 'map'
+        inf_msg.info.resolution = self._cs
+        inf_msg.info.width  = self._gw
+        inf_msg.info.height = self._gh
+        inf_data = [0] * (self._gw * self._gh)
+        for igx, igy in inflated:
+            inf_data[igy * self._gw + igx] = 100
+        inf_msg.data = inf_data
+        self._inflated_pub.publish(inf_msg)
+
         sx = max(0, min(self._gw - 1, int(self._robot_x / self._cs)))
         sy = max(0, min(self._gh - 1, int(self._robot_y / self._cs)))
         tx, ty = self._checkpoints[self._cp_idx]
