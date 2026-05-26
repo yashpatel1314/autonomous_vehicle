@@ -54,7 +54,7 @@ class Controller(Node):
 
         self._tf_br = TransformBroadcaster(self)
 
-        self.create_subscription(Path,      '/planned_path',  self._on_planned,  10)
+        self.create_subscription(Path,      '/planned_path',  self._on_planned,  _LATCHED)
         self.create_subscription(Path,      '/override_path', self._on_override, 10)
         self.create_subscription(Odometry,  '/odom',          self._on_odom,     10)
         self.create_subscription(PoseArray, '/checkpoints',   self._on_checkpoints, _LATCHED)
@@ -92,13 +92,14 @@ class Controller(Node):
     # ── control loop ──────────────────────────────────────────────────────────
 
     def _control_loop(self):
+        self._check_stuck()
+
         active = self._override_path if self._using_override else self._planned_path
         if not active:
             self._publish_cmd(0.0, 0.0)
             return
 
         self._check_checkpoints()
-        self._check_stuck()
 
         cur_idx = self._override_idx if self._using_override else self._planned_idx
         lp, new_idx = find_lookahead_point(

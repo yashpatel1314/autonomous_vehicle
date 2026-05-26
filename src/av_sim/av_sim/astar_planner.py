@@ -51,7 +51,7 @@ class AstarPlanner(Node):
         self.create_subscription(Int32,         '/checkpoint_reached', self._on_cp_reached, 10)
         self.create_subscription(Empty,         '/replan_request',     self._on_replan,    10)
 
-        self._path_pub    = self.create_publisher(Path,         '/planned_path', 1)
+        self._path_pub    = self.create_publisher(Path,         '/planned_path', _LATCHED)
         self._inflated_pub = self.create_publisher(OccupancyGrid, '/map/inflated', 1)
 
     # ── callbacks ──────────────────────────────────────────────────────────────
