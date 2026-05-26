@@ -122,8 +122,10 @@ class AstarPlanner(Node):
         if not self._checkpoints or self._cp_idx >= len(self._checkpoints):
             return
 
-        all_obs  = self._static_obs | self._scan_obs
-        inflated = inflate_obstacles(all_obs, self._gw, self._gh, self._inf)
+        # Inflate only the static (CSV) obstacles so lidar surface detections don't
+        # widen the blocked zone beyond what the physical geometry requires.
+        # scan_obs is still used by _on_scan/_path_crosses to decide WHEN to replan.
+        inflated = inflate_obstacles(self._static_obs, self._gw, self._gh, self._inf)
 
         inf_msg = OccupancyGrid()
         inf_msg.header.frame_id = 'map'
@@ -145,7 +147,7 @@ class AstarPlanner(Node):
 
         cells = astar((sx, sy), (gx, gy), inflated, self._gw, self._gh)
         if cells is None:
-            cells = astar((sx, sy), (gx, gy), all_obs, self._gw, self._gh)
+            cells = astar((sx, sy), (gx, gy), self._static_obs, self._gw, self._gh)
         if cells is None:
             self.get_logger().warning(f'No path from ({sx},{sy}) to ({gx},{gy})')
             return
