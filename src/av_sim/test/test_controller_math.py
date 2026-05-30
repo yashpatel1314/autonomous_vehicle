@@ -163,23 +163,66 @@ def test_find_lookahead_exact_distance():
 
 # ── pure_pursuit_cmd ──────────────────────────────────────────────────────────
 
+# --- alpha=0 (heading aligned): behaviour identical to original ---
+
 def test_pure_pursuit_cmd_forward():
-    lin, ang = pure_pursuit_cmd(dist=3.0, curvature=0.0)
+    lin, ang = pure_pursuit_cmd(dist=3.0, curvature=0.0, alpha=0.0)
     assert lin > 0
     assert ang == pytest.approx(0.0, abs=1e-9)
 
 def test_pure_pursuit_cmd_turn_left():
-    lin, ang = pure_pursuit_cmd(dist=2.0, curvature=1.0)
+    lin, ang = pure_pursuit_cmd(dist=2.0, curvature=1.0, alpha=0.0)
     assert lin > 0 and ang > 0
 
 def test_pure_pursuit_cmd_turn_right():
-    lin, ang = pure_pursuit_cmd(dist=2.0, curvature=-1.0)
+    lin, ang = pure_pursuit_cmd(dist=2.0, curvature=-1.0, alpha=0.0)
     assert lin > 0 and ang < 0
 
 def test_pure_pursuit_cmd_clamps_angular():
-    _, ang = pure_pursuit_cmd(dist=3.0, curvature=100.0)
+    _, ang = pure_pursuit_cmd(dist=3.0, curvature=100.0, alpha=0.0)
     assert abs(ang) <= 1.2
 
 def test_pure_pursuit_cmd_zero_dist():
-    lin, _ = pure_pursuit_cmd(dist=0.0, curvature=0.5)
+    lin, _ = pure_pursuit_cmd(dist=0.0, curvature=0.5, alpha=0.0)
     assert lin == pytest.approx(0.0)
+
+# --- cos(alpha) speed scaling ---
+
+def test_pure_pursuit_cmd_45deg_scales_speed():
+    alpha = math.pi / 4
+    lin_scaled, _ = pure_pursuit_cmd(dist=3.0, curvature=0.0, alpha=alpha)
+    lin_full,   _ = pure_pursuit_cmd(dist=3.0, curvature=0.0, alpha=0.0)
+    assert lin_scaled == pytest.approx(lin_full * math.cos(alpha), rel=1e-6)
+
+def test_pure_pursuit_cmd_45deg_uses_pure_pursuit_angular():
+    alpha = math.pi / 4
+    lin, ang = pure_pursuit_cmd(dist=3.0, curvature=1.0, alpha=alpha)
+    assert lin > 0
+    assert ang == pytest.approx(lin * 1.0, rel=1e-6)
+
+# --- rotate-in-place mode (heading error >= 90 deg) ---
+
+def test_pure_pursuit_cmd_90deg_stops():
+    lin, _ = pure_pursuit_cmd(dist=3.0, curvature=1.0, alpha=math.pi / 2)
+    assert lin == pytest.approx(0.0, abs=1e-9)
+
+def test_pure_pursuit_cmd_90deg_rotates_left():
+    _, ang = pure_pursuit_cmd(dist=3.0, curvature=0.0, alpha=math.pi / 2)
+    assert ang > 0
+
+def test_pure_pursuit_cmd_135deg_stops_and_rotates_left():
+    lin, ang = pure_pursuit_cmd(dist=3.0, curvature=0.0, alpha=3 * math.pi / 4)
+    assert lin == pytest.approx(0.0, abs=1e-9)
+    assert ang > 0
+
+def test_pure_pursuit_cmd_neg_90deg_rotates_right():
+    _, ang = pure_pursuit_cmd(dist=3.0, curvature=0.0, alpha=-math.pi / 2)
+    assert ang < 0
+
+def test_pure_pursuit_cmd_180deg_stops():
+    lin, _ = pure_pursuit_cmd(dist=3.0, curvature=0.0, alpha=math.pi)
+    assert lin == pytest.approx(0.0, abs=1e-9)
+
+def test_pure_pursuit_cmd_rotate_clamps_angular():
+    _, ang = pure_pursuit_cmd(dist=3.0, curvature=0.0, alpha=math.pi)
+    assert abs(ang) <= 1.2

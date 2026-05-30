@@ -53,8 +53,17 @@ def find_lookahead_point(path: list, robot_x: float, robot_y: float,
     return path[-1], len(path) - 1
 
 
-def pure_pursuit_cmd(dist: float, curvature: float):
-    """Return (linear_x, angular_z). Slows as end-of-path distance shrinks."""
-    linear  = min(MAX_LINEAR, KP_LINEAR * dist)
-    angular = max(-MAX_ANGULAR, min(MAX_ANGULAR, linear * curvature))
-    return linear, angular
+def pure_pursuit_cmd(dist: float, curvature: float, alpha: float = 0.0):
+    """Return (linear_x, angular_z).
+
+    Speed is scaled by cos(alpha) so the robot decelerates smoothly into turns.
+    When heading error >= 90 deg (cos <= 0) the robot stops and rotates in place
+    using a P-controller on alpha instead of Pure Pursuit curvature.
+    """
+    speed_scale = max(0.0, math.cos(alpha))
+    linear = min(MAX_LINEAR, KP_LINEAR * dist) * speed_scale
+    if speed_scale > 1e-6:
+        angular = linear * curvature
+    else:
+        angular = KP_ANGULAR * alpha
+    return linear, max(-MAX_ANGULAR, min(MAX_ANGULAR, angular))

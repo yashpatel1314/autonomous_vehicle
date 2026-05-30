@@ -13,6 +13,7 @@ from visualization_msgs.msg import Marker
 
 from av_sim.control_math import (
     _yaw_from_quat,
+    heading_error,
     find_lookahead_point,
     pure_pursuit_cmd,
     pure_pursuit_curvature,
@@ -122,8 +123,9 @@ class Controller(Node):
             self.get_logger().info('Override path exhausted, reverting to planned path')
             return
 
-        k   = pure_pursuit_curvature(self._robot_x, self._robot_y, self._robot_yaw, lp[0], lp[1])
-        lin, ang = pure_pursuit_cmd(dist=dist_to_end, curvature=k)
+        alpha    = heading_error(self._robot_x, self._robot_y, self._robot_yaw, lp[0], lp[1])
+        k        = pure_pursuit_curvature(self._robot_x, self._robot_y, self._robot_yaw, lp[0], lp[1])
+        lin, ang = pure_pursuit_cmd(dist=dist_to_end, curvature=k, alpha=alpha)
         self._publish_cmd(lin, ang)
         self._publish_lookahead(lp)
 
