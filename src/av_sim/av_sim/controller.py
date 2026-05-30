@@ -1,4 +1,4 @@
-"""controller — Pure Pursuit follower with external path override support."""
+"""controller — Stanley path follower with external path override support."""
 import math
 
 import rclpy
@@ -13,11 +13,9 @@ from visualization_msgs.msg import Marker
 
 from av_sim.control_math import (
     _yaw_from_quat,
-    heading_error,
-    find_lookahead_point,
-    pure_pursuit_cmd,
-    pure_pursuit_curvature,
-    LOOKAHEAD_DIST,
+    _normalise,
+    find_nearest_segment,
+    stanley_cmd,
 )
 
 _LATCHED = QoSProfile(
@@ -43,9 +41,10 @@ class Controller(Node):
         self._planned_idx         = 0
         self._override_idx        = 0
 
-        self._robot_x   = 0.5
-        self._robot_y   = 0.5
-        self._robot_yaw = 0.0
+        self._robot_x     = 0.5
+        self._robot_y     = 0.5
+        self._robot_yaw   = 0.0
+        self._robot_speed = 0.0   # m/s forward speed from odometry
 
         self._checkpoints: list = []   # [(wx,wy)]
         self._cp_idx            = 0
@@ -60,11 +59,11 @@ class Controller(Node):
         self.create_subscription(Odometry,  '/odom',          self._on_odom,     10)
         self.create_subscription(PoseArray, '/checkpoints',   self._on_checkpoints, _LATCHED)
 
-        self._cmd_pub    = self.create_publisher(Twist,  '/cmd_vel',             10)
-        self._marker_pub = self.create_publisher(Marker, '/lookahead_marker',    10)
-        self._cp_pub     = self.create_publisher(Int32,  '/checkpoint_reached',  10)
-        self._replan_pub = self.create_publisher(Empty,  '/replan_request',      10)
-        self._exhaust_pub = self.create_publisher(Empty, '/override_exhausted',  10)
+        self._cmd_pub     = self.create_publisher(Twist,  '/cmd_vel',            10)
+        self._marker_pub  = self.create_publisher(Marker, '/lookahead_marker',   10)
+        self._cp_pub      = self.create_publisher(Int32,  '/checkpoint_reached', 10)
+        self._replan_pub  = self.create_publisher(Empty,  '/replan_request',     10)
+        self._exhaust_pub = self.create_publisher(Empty,  '/override_exhausted', 10)
 
         self.create_timer(0.1, self._control_loop)
 
@@ -82,9 +81,10 @@ class Controller(Node):
 
     def _on_odom(self, msg):
         p = msg.pose.pose
-        self._robot_x   = p.position.x
-        self._robot_y   = p.position.y
-        self._robot_yaw = _yaw_from_quat(p.orientation)
+        self._robot_x     = p.position.x
+        self._robot_y     = p.position.y
+        self._robot_yaw   = _yaw_from_quat(p.orientation)
+        self._robot_speed = abs(msg.twist.twist.linear.x)
         self._broadcast_tf(msg)
 
     def _on_checkpoints(self, msg):
@@ -103,31 +103,30 @@ class Controller(Node):
         self._check_checkpoints()
 
         cur_idx = self._override_idx if self._using_override else self._planned_idx
-        lp, new_idx = find_lookahead_point(
-            active, self._robot_x, self._robot_y, cur_idx, LOOKAHEAD_DIST
+        fx, fy, cte, path_hdg, new_idx = find_nearest_segment(
+            active, self._robot_x, self._robot_y, cur_idx
         )
         if self._using_override:
-            self._override_idx = new_idx
+            self._override_idx = max(self._override_idx, new_idx)
         else:
-            self._planned_idx = new_idx
+            self._planned_idx = max(self._planned_idx, new_idx)
 
         dist_to_end = math.hypot(
             active[-1][0] - self._robot_x,
             active[-1][1] - self._robot_y,
         )
 
-        if self._using_override and new_idx >= len(self._override_path) - 1 and dist_to_end < 0.5:
+        if self._using_override and new_idx >= len(self._override_path) - 2 and dist_to_end < 0.5:
             self._using_override = False
             self._override_idx = 0
             self._exhaust_pub.publish(Empty())
             self.get_logger().info('Override path exhausted, reverting to planned path')
             return
 
-        alpha    = heading_error(self._robot_x, self._robot_y, self._robot_yaw, lp[0], lp[1])
-        k        = pure_pursuit_curvature(self._robot_x, self._robot_y, self._robot_yaw, lp[0], lp[1])
-        lin, ang = pure_pursuit_cmd(dist=dist_to_end, curvature=k, alpha=alpha)
+        psi_e    = _normalise(path_hdg - self._robot_yaw)
+        lin, ang = stanley_cmd(dist_to_end, psi_e, cte, self._robot_speed)
         self._publish_cmd(lin, ang)
-        self._publish_lookahead(lp)
+        self._publish_lookahead((fx, fy))
 
     def _check_checkpoints(self):
         if self._cp_idx >= len(self._checkpoints):
